@@ -1,0 +1,27 @@
+# Shared non-secret configuration. These values override the defaults baked
+# into the image's configs/config.yaml via environment variables.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: supplychain-config
+  namespace: foodsupplychain
+data:
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_USER: "supplychain"
+  DB_NAME: "supplychain"
+  NATS_URL: "nats://nats:4222"
+  INVENTORY_SERVICE_URL: "http://inventory-service:8080"
+  SHIPMENT_SERVICE_URL: "http://shipment-service:8080"
+---
+# Secret values. Replace these with sealed-secrets / an external secret manager
+# in a real deployment — the values below are development placeholders only.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: supplychain-secrets
+  namespace: foodsupplychain
+type: Opaque
+stringData:
+  DB_PASSWORD: "supplychain123"
+  JWT_SECRET: "change-me-in-production"

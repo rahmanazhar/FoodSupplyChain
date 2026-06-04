@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -134,6 +135,9 @@ func (s *ShipmentService) CreateShipment(ctx context.Context, shipment *models.S
 func (s *ShipmentService) UpdateShipmentStatus(ctx context.Context, id string, status string, location string) error {
 	var shipment models.Shipment
 	if err := s.db.First(&shipment, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrNotFound
+		}
 		return fmt.Errorf("failed to find shipment: %v", err)
 	}
 

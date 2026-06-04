@@ -18,16 +18,16 @@ type Product struct {
 
 // Inventory represents the current stock level of a product at a location
 type Inventory struct {
-	ID        string    `json:"id" gorm:"primaryKey"`
-	ProductID string    `json:"product_id" gorm:"index;not null"`
-	Product   Product   `json:"product" gorm:"foreignKey:ProductID"`
-	LocationID string   `json:"location_id" gorm:"index;not null"`
-	Location   Location `json:"location" gorm:"foreignKey:LocationID"`
-	Quantity   int      `json:"quantity" gorm:"not null"`
-	MinQuantity int     `json:"min_quantity" gorm:"not null"`
-	MaxQuantity int     `json:"max_quantity" gorm:"not null"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID          string    `json:"id" gorm:"primaryKey"`
+	ProductID   string    `json:"product_id" gorm:"index;not null"`
+	Product     Product   `json:"product" gorm:"foreignKey:ProductID"`
+	LocationID  string    `json:"location_id" gorm:"index;not null"`
+	Location    Location  `json:"location" gorm:"foreignKey:LocationID"`
+	Quantity    int       `json:"quantity" gorm:"not null"`
+	MinQuantity int       `json:"min_quantity" gorm:"not null"`
+	MaxQuantity int       `json:"max_quantity" gorm:"not null"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // Location represents a physical location in the supply chain

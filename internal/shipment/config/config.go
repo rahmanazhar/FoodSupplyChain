@@ -52,6 +52,12 @@ type Config struct {
 		Enabled        bool `yaml:"enabled"`
 		PrometheusPort int  `yaml:"prometheus_port"`
 	} `yaml:"metrics"`
+
+	Auth struct {
+		JWTSecret          string        `yaml:"jwt_secret"`
+		TokenExpiry        time.Duration `yaml:"token_expiry"`
+		RefreshTokenExpiry time.Duration `yaml:"refresh_token_expiry"`
+	} `yaml:"auth"`
 }
 
 // Load reads the configuration from a YAML file
@@ -121,6 +127,10 @@ func Load() (*Config, error) {
 
 	if natsURL := os.Getenv("NATS_URL"); natsURL != "" {
 		config.NATS.URL = natsURL
+	}
+
+	if jwtSecret := os.Getenv("JWT_SECRET"); jwtSecret != "" {
+		config.Auth.JWTSecret = jwtSecret
 	}
 
 	// Validate required fields

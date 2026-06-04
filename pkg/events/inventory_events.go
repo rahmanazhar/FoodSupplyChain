@@ -18,25 +18,25 @@ const (
 
 // BaseEvent represents the common fields for all events
 type BaseEvent struct {
-	ID          string    `json:"id"`
-	Type        string    `json:"type"`
-	Timestamp   time.Time `json:"timestamp"`
-	Version     string    `json:"version"`
-	Source      string    `json:"source"`
-	TraceID     string    `json:"trace_id,omitempty"`
-	TenantID    string    `json:"tenant_id,omitempty"`
+	ID        string    `json:"id"`
+	Type      string    `json:"type"`
+	Timestamp time.Time `json:"timestamp"`
+	Version   string    `json:"version"`
+	Source    string    `json:"source"`
+	TraceID   string    `json:"trace_id,omitempty"`
+	TenantID  string    `json:"tenant_id,omitempty"`
 }
 
 // InventoryEvent represents an event related to inventory changes
 type InventoryEvent struct {
 	BaseEvent
 	Data struct {
-		InventoryID string `json:"inventory_id"`
-		ProductID   string `json:"product_id"`
-		LocationID  string `json:"location_id"`
-		Quantity    int    `json:"quantity"`
-		PrevQuantity int   `json:"prev_quantity,omitempty"`
-		Reason      string `json:"reason,omitempty"`
+		InventoryID  string `json:"inventory_id"`
+		ProductID    string `json:"product_id"`
+		LocationID   string `json:"location_id"`
+		Quantity     int    `json:"quantity"`
+		PrevQuantity int    `json:"prev_quantity,omitempty"`
+		Reason       string `json:"reason,omitempty"`
 	} `json:"data"`
 }
 
@@ -44,12 +44,12 @@ type InventoryEvent struct {
 type InventoryAlertEvent struct {
 	BaseEvent
 	Data struct {
-		AlertID     string `json:"alert_id"`
-		InventoryID string `json:"inventory_id"`
-		AlertType   string `json:"alert_type"`
-		Message     string `json:"message"`
-		Threshold   int    `json:"threshold,omitempty"`
-		CurrentLevel int   `json:"current_level"`
+		AlertID      string `json:"alert_id"`
+		InventoryID  string `json:"inventory_id"`
+		AlertType    string `json:"alert_type"`
+		Message      string `json:"message"`
+		Threshold    int    `json:"threshold,omitempty"`
+		CurrentLevel int    `json:"current_level"`
 	} `json:"data"`
 }
 

@@ -36,11 +36,10 @@ The system is built using a microservices architecture with the following compon
 - Vue.js 3
   - Composition API
   - Vue Router
-  - Vuex for state management
+  - Pinia for state management
 - Tailwind CSS for styling
-- Chart.js for analytics
-- Leaflet for maps
 - Axios for HTTP requests
+- Planned: Chart.js for analytics and Leaflet for maps (not yet integrated)
 
 ### Infrastructure
 - Docker & Docker Compose for local development
@@ -132,12 +131,11 @@ npm run lint       # Run linter
 │   └── k8s/              # Kubernetes manifests
 ├── frontend/             # Frontend application
 │   └── foodsupplychain/  # Vue.js application
-├── internal/             # Private application code
-│   ├── common/          # Shared utilities
-│   ├── gateway/         # Gateway service implementation
-│   ├── inventory/       # Inventory service implementation
-│   └── shipment/        # Shipment service implementation
-└── saka_docs/           # Project documentation
+└── internal/             # Private application code
+    ├── common/          # Shared utilities
+    ├── gateway/         # Gateway service implementation
+    ├── inventory/       # Inventory service implementation
+    └── shipment/        # Shipment service implementation
 ```
 
 ## Current Status
@@ -145,11 +143,29 @@ npm run lint       # Run linter
 - ✅ Project setup and architecture
 - ✅ Core service structure
 - ✅ Frontend Vue.js setup with Tailwind CSS
-- ✅ Basic inventory and shipment services
-- 🔄 Database schema implementation
-- 🔄 API endpoints implementation
-- 🔄 Event handling setup
-- 🔄 Frontend-Backend integration
+- ✅ Inventory and shipment services (HTTP handlers wired to the GORM service layer)
+- ✅ Database schema + auto-migration (GORM models)
+- ✅ Event publishing via NATS JetStream
+- ✅ Authentication & role-based access control (JWT, `pkg/auth`)
+- ✅ Kubernetes manifests (`deployments/k8s/`)
+- ✅ Unit tests for auth and HTTP handlers
+- 🔄 Frontend ↔ backend integration (inventory wired; shipment views pending)
+- 🔄 Analytics charts and map visualisations (planned)
+
+## Authentication
+
+Authentication uses signed JWTs (HMAC-SHA256). The token manager and the
+role-based access-control middleware live in [`pkg/auth`](pkg/auth).
+
+- The shipment service protects its `/api/v1` routes — requests must send an
+  `Authorization: Bearer <token>` header. Deleting a shipment additionally
+  requires the `admin` or `manager` role.
+- The inventory service endpoints are currently unauthenticated to keep the
+  Vue frontend integration simple.
+- Configure the signing secret via the `auth.jwt_secret` config value or the
+  `JWT_SECRET` environment variable.
+
+Roles, from most to least privileged: `admin`, `manager`, `operator`, `viewer`.
 
 ## Contributing
 

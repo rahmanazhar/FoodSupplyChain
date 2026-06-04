@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -133,6 +134,9 @@ func (s *InventoryService) CreateProduct(ctx context.Context, product *models.Pr
 func (s *InventoryService) UpdateInventory(ctx context.Context, id string, quantity int) error {
 	var inventory models.Inventory
 	if err := s.db.First(&inventory, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrNotFound
+		}
 		return fmt.Errorf("failed to find inventory: %v", err)
 	}
 
