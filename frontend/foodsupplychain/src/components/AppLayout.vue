@@ -21,24 +21,16 @@
             </div>
           </div>
 
-          <!-- API token control -->
-          <div class="hidden sm:flex sm:items-center sm:gap-2">
-            <template v-if="auth.isAuthenticated">
-              <span class="inline-flex items-center rounded-full bg-primary-100 px-2.5 py-0.5 text-xs font-medium text-primary-800">
-                {{ auth.role || 'token' }}
-              </span>
-              <button class="text-sm text-gray-500 hover:text-gray-700" @click="auth.clear()">Clear token</button>
-            </template>
-            <template v-else>
-              <input
-                v-model="tokenInput"
-                type="password"
-                placeholder="Paste API token…"
-                class="input !w-56 !py-1 text-xs"
-                @keyup.enter="saveToken"
-              />
-              <button class="btn-primary !py-1" @click="saveToken">Set</button>
-            </template>
+          <!-- Signed-in user -->
+          <div class="hidden sm:flex sm:items-center sm:gap-3">
+            <div class="text-right leading-tight">
+              <p class="text-sm font-medium text-gray-900">{{ auth.subject || 'user' }}</p>
+              <p class="text-xs text-primary-600 capitalize">{{ auth.role }}</p>
+            </div>
+            <div class="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center">
+              <span class="text-primary-800 font-medium uppercase">{{ (auth.subject || 'u').charAt(0) }}</span>
+            </div>
+            <button class="text-sm text-gray-500 hover:text-gray-700" @click="logout">Sign out</button>
           </div>
         </div>
       </div>
@@ -52,11 +44,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
-const tokenInput = ref('')
+const router = useRouter()
 
 const links = [
   { to: '/', label: 'Dashboard' },
@@ -65,9 +57,8 @@ const links = [
   { to: '/catalog', label: 'Catalog' }
 ]
 
-const saveToken = () => {
-  if (!tokenInput.value.trim()) return
-  auth.setToken(tokenInput.value)
-  tokenInput.value = ''
+const logout = () => {
+  auth.logout()
+  router.replace('/login')
 }
 </script>

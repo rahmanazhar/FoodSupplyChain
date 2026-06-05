@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 #
-# run.sh — launch the full Food Supply Chain stack locally.
+# run.sh — launch the full Food Supply Chain stack locally (front + back).
 #
-# Brings up Postgres + NATS (Docker), then builds and runs the inventory,
-# shipment and gateway services. Everything is torn down on Ctrl-C.
+# Brings up Postgres + NATS (Docker), the inventory/shipment/gateway services,
+# and the Vue frontend. A fresh random JWT secret is generated each run and
+# shared by the gateway (which issues tokens at /auth/login) and the shipment
+# service (which validates them). Everything is torn down on Ctrl-C.
 #
 # Usage:
-#   ./scripts/run.sh                start the whole stack (Ctrl-C to stop)
-#   ./scripts/run.sh --seed         also insert a demo product + location
-#   ./scripts/run.sh --no-docker    assume Postgres/NATS are already running
-#   ./scripts/run.sh --help         show this help
+#   ./scripts/run.sh                 start the whole stack (Ctrl-C to stop)
+#   ./scripts/run.sh --seed          also insert a demo product + location
+#   ./scripts/run.sh --no-frontend   backend only
+#   ./scripts/run.sh --no-docker     assume Postgres/NATS are already running
+#   ./scripts/run.sh --help          show this help
 #
 set -euo pipefail
 
@@ -21,21 +24,29 @@ COMPOSE_FILE="deployments/docker/docker-compose.yml"
 COMPOSE=(docker compose -f "$COMPOSE_FILE")
 LOG_DIR="$ROOT/logs"
 BIN_DIR="$ROOT/bin"
+FRONTEND_DIR="$ROOT/frontend/foodsupplychain"
 
 INVENTORY_PORT=8080
 SHIPMENT_PORT=8081
 GATEWAY_PORT=3000
+FRONTEND_PORT=5173
 
 SEED=false
 USE_DOCKER=true
+USE_FRONTEND=true
 for arg in "$@"; do
   case "$arg" in
-    --seed)      SEED=true ;;
-    --no-docker) USE_DOCKER=false ;;
-    -h|--help)   sed -n '2,13p' "$0" | sed 's/^#\s\{0,1\}//'; exit 0 ;;
+    --seed)        SEED=true ;;
+    --no-docker)   USE_DOCKER=false ;;
+    --no-frontend) USE_FRONTEND=false ;;
+    -h|--help)     sed -n '2,17p' "$0" | sed 's/^#\s\{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg (try --help)" >&2; exit 1 ;;
   esac
 done
+
+# A fresh random secret per run (shared by gateway + shipment).
+JWT_SECRET="$(openssl rand -hex 32 2>/dev/null || echo "dev-secret-$$-${RANDOM}${RANDOM}")"
+export JWT_SECRET
 
 PIDS=()
 CLEANED=false
@@ -82,7 +93,7 @@ go build -o "$BIN_DIR/inventory" ./cmd/inventory
 go build -o "$BIN_DIR/shipment"  ./cmd/shipment
 go build -o "$BIN_DIR/gateway"   ./cmd/gateway
 
-# 3. Launch ------------------------------------------------------------------
+# 3. Launch backend ----------------------------------------------------------
 echo "==> Launching services..."
 "$BIN_DIR/inventory" >"$LOG_DIR/inventory.log" 2>&1 &
 PIDS+=($!)
@@ -91,10 +102,21 @@ PIDS+=($!)
 "$BIN_DIR/gateway" >"$LOG_DIR/gateway.log" 2>&1 &
 PIDS+=($!)
 
-# 4. Wait for readiness ------------------------------------------------------
+# 4. Launch frontend ---------------------------------------------------------
+if $USE_FRONTEND; then
+  if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
+    echo "==> Installing frontend dependencies..."
+    (cd "$FRONTEND_DIR" && npm install)
+  fi
+  echo "==> Launching frontend..."
+  ( cd "$FRONTEND_DIR" && exec node_modules/.bin/vite --port "$FRONTEND_PORT" ) >"$LOG_DIR/frontend.log" 2>&1 &
+  PIDS+=($!)
+fi
+
+# 5. Wait for readiness ------------------------------------------------------
 wait_health() {
   local name=$1 url=$2
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 60); do
     if curl -fsS -o /dev/null "$url" 2>/dev/null; then
       echo "    $name ready"
       return 0
@@ -108,8 +130,9 @@ echo "==> Waiting for services..."
 wait_health inventory "http://localhost:$INVENTORY_PORT/health"
 wait_health shipment  "http://localhost:$SHIPMENT_PORT/health"
 wait_health gateway   "http://localhost:$GATEWAY_PORT/health"
+$USE_FRONTEND && wait_health frontend "http://localhost:$FRONTEND_PORT"
 
-# 5. Optional demo seed ------------------------------------------------------
+# 6. Optional demo seed ------------------------------------------------------
 if $SEED && $USE_DOCKER; then
   echo "==> Seeding demo product + location..."
   "${COMPOSE[@]}" exec -T postgres psql -U supplychain -d supplychain -q -c \
@@ -123,18 +146,20 @@ cat <<EOF
 ============================================================
   Food Supply Chain is running.
 
+$($USE_FRONTEND && echo "  Frontend   http://localhost:$FRONTEND_PORT   <-- open this")
   Gateway    http://localhost:$GATEWAY_PORT
   Inventory  http://localhost:$INVENTORY_PORT          (no auth)
   Shipment   http://localhost:$SHIPMENT_PORT/api/v1     (JWT required)
 
-  Mint a token:
-    go run ./cmd/token -secret "your-secret-key-here" -role admin
+  Sign in from the app's login page (pick a role — no token to paste).
+  A fresh JWT secret is generated each run:
+    JWT_SECRET=$JWT_SECRET
 
-  Logs:  $LOG_DIR/{inventory,shipment,gateway}.log
+  Logs:  $LOG_DIR/{inventory,shipment,gateway,frontend}.log
 
   Press Ctrl-C to stop everything.
 ============================================================
 EOF
 
-# Stay in the foreground; exit (and clean up) if any service dies.
+# Stay in the foreground; exit (and clean up) if any process dies.
 wait

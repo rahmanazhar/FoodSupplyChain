@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { authApi } from '@/services/api'
 
 const STORAGE_KEY = 'fsc.token'
 
@@ -44,5 +45,16 @@ export const useAuthStore = defineStore('auth', () => {
     setToken('')
   }
 
-  return { token, isAuthenticated, claims, role, subject, setToken, clear }
+  // login obtains a JWT from the gateway's /auth/login for the chosen role.
+  async function login(role, username = '') {
+    const data = await authApi.login(username, role)
+    setToken(data.token)
+    return data
+  }
+
+  function logout() {
+    clear()
+  }
+
+  return { token, isAuthenticated, claims, role, subject, setToken, clear, login, logout }
 })

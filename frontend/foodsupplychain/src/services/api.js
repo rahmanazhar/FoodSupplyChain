@@ -54,6 +54,11 @@ export const locationApi = {
   remove: (id) => api.delete(`/locations/${id}`).then((r) => r.data)
 }
 
+export const authApi = {
+  login: (username, role, tenant) =>
+    api.post('/auth/login', { username, role, tenant }).then((r) => r.data)
+}
+
 export const shipmentApi = {
   getAll: () => api.get('/shipments').then((r) => r.data),
   get: (id) => api.get(`/shipments/${id}`).then((r) => r.data),

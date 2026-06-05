@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,12 +14,16 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+
+	"github.com/rahmanazhar/FoodSupplyChain/pkg/auth"
 )
 
 type Config struct {
 	Port             int
 	InventoryService string
 	ShipmentService  string
+	JWTSecret        string
+	TokenTTL         time.Duration
 	ReadTimeout      time.Duration
 	WriteTimeout     time.Duration
 	IdleTimeout      time.Duration
@@ -45,10 +50,14 @@ func main() {
 		Port:             3000,
 		InventoryService: getEnv("INVENTORY_SERVICE_URL", "http://localhost:8080"),
 		ShipmentService:  getEnv("SHIPMENT_SERVICE_URL", "http://localhost:8081"),
+		JWTSecret:        getEnv("JWT_SECRET", "your-secret-key-here"),
+		TokenTTL:         parseDuration(getEnv("TOKEN_TTL", "1h"), time.Hour),
 		ReadTimeout:      5 * time.Second,
 		WriteTimeout:     10 * time.Second,
 		IdleTimeout:      120 * time.Second,
 	}
+
+	authManager := auth.NewManager(cfg.JWTSecret, cfg.TokenTTL)
 
 	router := mux.NewRouter()
 	router.Use(corsMiddleware)
@@ -57,6 +66,10 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods(http.MethodGet, http.MethodOptions)
+
+	// Issues a JWT for the selected role. This is a development-grade sign-in
+	// (no password store); the gateway and shipment service share JWT_SECRET.
+	router.HandleFunc("/auth/login", loginHandler(authManager, cfg.TokenTTL)).Methods(http.MethodPost, http.MethodOptions)
 
 	setupProxyRoutes(router, cfg)
 
@@ -139,6 +152,64 @@ func createReverseProxy(target *url.URL, pathPrefix string) *httputil.ReversePro
 	}
 
 	return proxy
+}
+
+// loginHandler issues a JWT for a requested role. Roles are validated against
+// the known set; the subject defaults to the role name when no username is given.
+func loginHandler(manager *auth.Manager, ttl time.Duration) http.HandlerFunc {
+	allowed := map[string]bool{
+		auth.RoleAdmin:    true,
+		auth.RoleManager:  true,
+		auth.RoleOperator: true,
+		auth.RoleViewer:   true,
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Username string `json:"username"`
+			Role     string `json:"role"`
+			Tenant   string `json:"tenant"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if body.Role == "" {
+			body.Role = auth.RoleViewer
+		}
+		if !allowed[body.Role] {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown role"})
+			return
+		}
+		subject := body.Username
+		if subject == "" {
+			subject = body.Role
+		}
+
+		token, err := manager.GenerateToken(subject, body.Role, body.Tenant)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"token":      token,
+			"role":       body.Role,
+			"username":   subject,
+			"expires_in": int(ttl.Seconds()),
+		})
+	}
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func parseDuration(value string, fallback time.Duration) time.Duration {
+	if d, err := time.ParseDuration(value); err == nil {
+		return d
+	}
+	return fallback
 }
 
 func getEnv(key, defaultValue string) string {

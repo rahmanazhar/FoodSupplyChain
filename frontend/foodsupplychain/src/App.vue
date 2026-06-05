@@ -1,5 +1,6 @@
 <template>
-  <AppLayout />
+  <router-view v-if="$route.meta.blank" />
+  <AppLayout v-else />
 </template>
 
 <script setup>

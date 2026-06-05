@@ -3,6 +3,8 @@ import DashboardView from '../views/DashboardView.vue'
 import InventoryView from '../views/InventoryView.vue'
 import ShipmentsView from '../views/ShipmentsView.vue'
 import CatalogView from '../views/CatalogView.vue'
+import LoginView from '../views/LoginView.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -26,8 +28,25 @@ const router = createRouter({
       path: '/catalog',
       name: 'catalog',
       component: CatalogView
+    },
+    {
+      path: '/login',
+      name: 'login',
+      component: LoginView,
+      meta: { blank: true, public: true }
     }
   ]
+})
+
+// Require a signed-in session for every route except the login page.
+router.beforeEach((to) => {
+  const auth = useAuthStore()
+  if (!to.meta.public && !auth.isAuthenticated) {
+    return { path: '/login', query: { redirect: to.fullPath } }
+  }
+  if (to.path === '/login' && auth.isAuthenticated) {
+    return { path: '/' }
+  }
 })
 
 export default router
