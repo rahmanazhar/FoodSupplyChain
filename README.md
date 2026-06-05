@@ -81,17 +81,16 @@ The system is built using a microservices architecture with the following compon
    cd ../..
    ```
 
-4. Start the development environment:
+4. Start the backend stack (Postgres + NATS + all services) with one command:
    ```bash
-   make docker-compose-up
+   ./scripts/run.sh           # add --seed to insert a demo product/location
    ```
+   This brings up Docker (Postgres + NATS), builds and launches the inventory,
+   shipment and gateway services, and tears everything down on Ctrl-C.
+   Equivalent: `make run` (or `make run-seed`).
 
-5. Run the services:
+5. In another terminal, start the frontend:
    ```bash
-   # In one terminal
-   make run
-
-   # In another terminal
    cd frontend/foodsupplychain
    npm run dev
    ```

@@ -24,6 +24,14 @@ type InventoryService interface {
 	CreateInventory(ctx context.Context, inv *models.Inventory) error
 	UpdateInventory(ctx context.Context, id string, quantity int) error
 	DeleteInventory(ctx context.Context, id string) error
+
+	ListProducts(ctx context.Context) ([]models.Product, error)
+	CreateProduct(ctx context.Context, product *models.Product) error
+	DeleteProduct(ctx context.Context, id string) error
+
+	ListLocations(ctx context.Context) ([]models.Location, error)
+	CreateLocation(ctx context.Context, location *models.Location) error
+	DeleteLocation(ctx context.Context, id string) error
 }
 
 // Server exposes the inventory service over HTTP.
@@ -62,6 +70,14 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/inventory/{id}", s.handleGetInventoryItem).Methods(http.MethodGet, http.MethodOptions)
 	s.router.HandleFunc("/inventory/{id}", s.handleUpdateInventory).Methods(http.MethodPut, http.MethodOptions)
 	s.router.HandleFunc("/inventory/{id}", s.handleDeleteInventory).Methods(http.MethodDelete, http.MethodOptions)
+
+	s.router.HandleFunc("/products", s.handleGetProducts).Methods(http.MethodGet, http.MethodOptions)
+	s.router.HandleFunc("/products", s.handleCreateProduct).Methods(http.MethodPost, http.MethodOptions)
+	s.router.HandleFunc("/products/{id}", s.handleDeleteProduct).Methods(http.MethodDelete, http.MethodOptions)
+
+	s.router.HandleFunc("/locations", s.handleGetLocations).Methods(http.MethodGet, http.MethodOptions)
+	s.router.HandleFunc("/locations", s.handleCreateLocation).Methods(http.MethodPost, http.MethodOptions)
+	s.router.HandleFunc("/locations/{id}", s.handleDeleteLocation).Methods(http.MethodDelete, http.MethodOptions)
 }
 
 // Middleware
@@ -166,6 +182,78 @@ func (s *Server) handleDeleteInventory(w http.ResponseWriter, r *http.Request) {
 	if err := s.service.DeleteInventory(r.Context(), id); err != nil {
 		if errors.Is(err, service.ErrNotFound) {
 			s.writeError(w, http.StatusNotFound, "inventory item not found")
+			return
+		}
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Product handlers
+
+func (s *Server) handleGetProducts(w http.ResponseWriter, r *http.Request) {
+	products, err := s.service.ListProducts(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.writeJSON(w, http.StatusOK, products)
+}
+
+func (s *Server) handleCreateProduct(w http.ResponseWriter, r *http.Request) {
+	var product models.Product
+	if err := json.NewDecoder(r.Body).Decode(&product); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := s.service.CreateProduct(r.Context(), &product); err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.writeJSON(w, http.StatusCreated, product)
+}
+
+func (s *Server) handleDeleteProduct(w http.ResponseWriter, r *http.Request) {
+	if err := s.service.DeleteProduct(r.Context(), mux.Vars(r)["id"]); err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			s.writeError(w, http.StatusNotFound, "product not found")
+			return
+		}
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Location handlers
+
+func (s *Server) handleGetLocations(w http.ResponseWriter, r *http.Request) {
+	locations, err := s.service.ListLocations(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.writeJSON(w, http.StatusOK, locations)
+}
+
+func (s *Server) handleCreateLocation(w http.ResponseWriter, r *http.Request) {
+	var location models.Location
+	if err := json.NewDecoder(r.Body).Decode(&location); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := s.service.CreateLocation(r.Context(), &location); err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.writeJSON(w, http.StatusCreated, location)
+}
+
+func (s *Server) handleDeleteLocation(w http.ResponseWriter, r *http.Request) {
+	if err := s.service.DeleteLocation(r.Context(), mux.Vars(r)["id"]); err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			s.writeError(w, http.StatusNotFound, "location not found")
 			return
 		}
 		s.writeError(w, http.StatusInternalServerError, err.Error())

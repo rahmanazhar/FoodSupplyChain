@@ -5,67 +5,69 @@
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
           <div class="flex">
-            <!-- Logo -->
             <div class="flex-shrink-0 flex items-center">
               <h1 class="text-xl font-bold text-primary-600">FoodSupplyChain</h1>
             </div>
-            <!-- Navigation Links -->
             <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
-              <router-link 
-                to="/" 
-                class="inline-flex items-center px-1 pt-1 border-b-2"
-                :class="[$route.path === '/' ? 'border-primary-500 text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700']"
+              <router-link
+                v-for="link in links"
+                :key="link.to"
+                :to="link.to"
+                class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                :class="$route.path === link.to ? 'border-primary-500 text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'"
               >
-                Dashboard
-              </router-link>
-              <router-link 
-                to="/inventory" 
-                class="inline-flex items-center px-1 pt-1 border-b-2"
-                :class="[$route.path === '/inventory' ? 'border-primary-500 text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700']"
-              >
-                Inventory
-              </router-link>
-              <router-link 
-                to="/shipments" 
-                class="inline-flex items-center px-1 pt-1 border-b-2"
-                :class="[$route.path === '/shipments' ? 'border-primary-500 text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700']"
-              >
-                Shipments
+                {{ link.label }}
               </router-link>
             </div>
           </div>
-          <!-- User Menu -->
-          <div class="hidden sm:ml-6 sm:flex sm:items-center">
-            <button class="bg-white p-1 rounded-full text-gray-400 hover:text-gray-500">
-              <span class="sr-only">View notifications</span>
-              <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-            </button>
-            <div class="ml-3 relative">
-              <div>
-                <button class="bg-white rounded-full flex text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
-                  <span class="sr-only">Open user menu</span>
-                  <div class="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center">
-                    <span class="text-primary-800 font-medium">U</span>
-                  </div>
-                </button>
-              </div>
-            </div>
+
+          <!-- API token control -->
+          <div class="hidden sm:flex sm:items-center sm:gap-2">
+            <template v-if="auth.isAuthenticated">
+              <span class="inline-flex items-center rounded-full bg-primary-100 px-2.5 py-0.5 text-xs font-medium text-primary-800">
+                {{ auth.role || 'token' }}
+              </span>
+              <button class="text-sm text-gray-500 hover:text-gray-700" @click="auth.clear()">Clear token</button>
+            </template>
+            <template v-else>
+              <input
+                v-model="tokenInput"
+                type="password"
+                placeholder="Paste API token…"
+                class="input !w-56 !py-1 text-xs"
+                @keyup.enter="saveToken"
+              />
+              <button class="btn-primary !py-1" @click="saveToken">Set</button>
+            </template>
           </div>
         </div>
       </div>
     </nav>
 
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
       <router-view></router-view>
     </main>
   </div>
 </template>
 
 <script setup>
-import { useRoute } from 'vue-router'
+import { ref } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 
-const route = useRoute()
+const auth = useAuthStore()
+const tokenInput = ref('')
+
+const links = [
+  { to: '/', label: 'Dashboard' },
+  { to: '/inventory', label: 'Inventory' },
+  { to: '/shipments', label: 'Shipments' },
+  { to: '/catalog', label: 'Catalog' }
+]
+
+const saveToken = () => {
+  if (!tokenInput.value.trim()) return
+  auth.setToken(tokenInput.value)
+  tokenInput.value = ''
+}
 </script>

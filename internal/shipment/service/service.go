@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -72,6 +73,12 @@ func NewShipmentService(cfg *config.Config) (*ShipmentService, error) {
 		return nil, fmt.Errorf("failed to create JetStream context: %v", err)
 	}
 
+	// Ensure a JetStream stream exists for this service's subjects, otherwise
+	// synchronous publishes fail with "no stream matches subject".
+	if err := ensureStream(js, cfg.NATS.SubjectPrefix); err != nil {
+		return nil, err
+	}
+
 	return &ShipmentService{
 		config: cfg,
 		db:     db,
@@ -101,7 +108,9 @@ func (s *ShipmentService) Close() error {
 
 // CreateShipment creates a new shipment
 func (s *ShipmentService) CreateShipment(ctx context.Context, shipment *models.Shipment) error {
-	shipment.ID = uuid.New().String()
+	if shipment.ID == "" {
+		shipment.ID = uuid.New().String()
+	}
 	shipment.CreatedAt = time.Now()
 	shipment.UpdatedAt = time.Now()
 
@@ -183,5 +192,21 @@ func (s *ShipmentService) publishEvent(subject string, event interface{}) error 
 		return fmt.Errorf("failed to publish event: %v", err)
 	}
 
+	return nil
+}
+
+// ensureStream creates a JetStream stream covering the service's subject prefix
+// if one does not already exist, so that event publishing succeeds on startup.
+func ensureStream(js nats.JetStreamContext, subjectPrefix string) error {
+	streamName := strings.ToUpper(strings.ReplaceAll(subjectPrefix, ".", "_"))
+	if _, err := js.StreamInfo(streamName); err == nil {
+		return nil // stream already exists
+	}
+	if _, err := js.AddStream(&nats.StreamConfig{
+		Name:     streamName,
+		Subjects: []string{subjectPrefix + ".>"},
+	}); err != nil {
+		return fmt.Errorf("failed to create JetStream stream %q: %w", streamName, err)
+	}
 	return nil
 }

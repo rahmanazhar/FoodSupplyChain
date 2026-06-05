@@ -72,4 +72,6 @@ coverage/
 *.tmp
 *.temp
 *.bak
-/saka_docs
+
+# Local run artifacts
+/logs/

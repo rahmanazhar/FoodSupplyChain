@@ -95,22 +95,47 @@ func setupProxyRoutes(router *mux.Router, cfg *Config) {
 	if err != nil {
 		log.Fatalf("Invalid inventory service URL: %v", err)
 	}
-	router.PathPrefix("/inventory").Handler(createReverseProxy(inventoryURL)).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions)
+	methods := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions}
+
+	// The inventory service owns inventory, products and locations.
+	inventoryProxy := createReverseProxy(inventoryURL, "")
+	router.PathPrefix("/inventory").Handler(inventoryProxy).Methods(methods...)
+	router.PathPrefix("/products").Handler(inventoryProxy).Methods(methods...)
+	router.PathPrefix("/locations").Handler(inventoryProxy).Methods(methods...)
 
 	shipmentURL, err := url.Parse(cfg.ShipmentService)
 	if err != nil {
 		log.Fatalf("Invalid shipment service URL: %v", err)
 	}
-	router.PathPrefix("/shipments").Handler(createReverseProxy(shipmentURL)).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions)
+	// The shipment service serves under /api/v1, so /shipments/* is rewritten
+	// to /api/v1/shipments/* before being forwarded.
+	router.PathPrefix("/shipments").Handler(createReverseProxy(shipmentURL, "/api/v1")).Methods(methods...)
 }
 
-func createReverseProxy(target *url.URL) *httputil.ReverseProxy {
+// createReverseProxy builds a reverse proxy to target. If pathPrefix is set, it
+// is prepended to the request path before forwarding (used to map the gateway's
+// public paths onto a service's internal route prefix).
+func createReverseProxy(target *url.URL, pathPrefix string) *httputil.ReverseProxy {
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
+		if pathPrefix != "" {
+			req.URL.Path = pathPrefix + req.URL.Path
+		}
 		originalDirector(req)
 		req.Header.Set("X-Proxy-Gateway", "api-gateway")
+	}
+
+	// The gateway is the single source of CORS headers; strip any set by the
+	// backend so responses don't carry duplicate Access-Control-* headers
+	// (which browsers reject).
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		resp.Header.Del("Access-Control-Allow-Origin")
+		resp.Header.Del("Access-Control-Allow-Methods")
+		resp.Header.Del("Access-Control-Allow-Headers")
+		resp.Header.Del("Access-Control-Allow-Credentials")
+		return nil
 	}
 
 	return proxy

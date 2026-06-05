@@ -75,16 +75,25 @@ func (s *ShipmentService) UpdateShipment(ctx context.Context, id string, update 
 	return &shipment, nil
 }
 
-// DeleteShipment removes a shipment by ID, or returns ErrNotFound.
+// DeleteShipment removes a shipment and its dependent events and alerts in a
+// single transaction, or returns ErrNotFound.
 func (s *ShipmentService) DeleteShipment(ctx context.Context, id string) error {
-	result := s.db.WithContext(ctx).Delete(&models.Shipment{}, "id = ?", id)
-	if result.Error != nil {
-		return fmt.Errorf("failed to delete shipment: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("shipment_id = ?", id).Delete(&models.ShipmentEvent{}).Error; err != nil {
+			return fmt.Errorf("failed to delete shipment events: %w", err)
+		}
+		if err := tx.Where("shipment_id = ?", id).Delete(&models.ShipmentAlert{}).Error; err != nil {
+			return fmt.Errorf("failed to delete shipment alerts: %w", err)
+		}
+		result := tx.Delete(&models.Shipment{}, "id = ?", id)
+		if result.Error != nil {
+			return fmt.Errorf("failed to delete shipment: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
 // ListShipmentEvents returns the lifecycle events for a shipment, oldest first.

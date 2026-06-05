@@ -63,6 +63,30 @@ func (f *fakeInventoryService) DeleteInventory(ctx context.Context, id string) e
 	return nil
 }
 
+func (f *fakeInventoryService) ListProducts(ctx context.Context) ([]models.Product, error) {
+	return []models.Product{}, nil
+}
+
+func (f *fakeInventoryService) CreateProduct(ctx context.Context, product *models.Product) error {
+	return nil
+}
+
+func (f *fakeInventoryService) DeleteProduct(ctx context.Context, id string) error {
+	return nil
+}
+
+func (f *fakeInventoryService) ListLocations(ctx context.Context) ([]models.Location, error) {
+	return []models.Location{}, nil
+}
+
+func (f *fakeInventoryService) CreateLocation(ctx context.Context, location *models.Location) error {
+	return nil
+}
+
+func (f *fakeInventoryService) DeleteLocation(ctx context.Context, id string) error {
+	return nil
+}
+
 func newTestServer(svc InventoryService) *Server {
 	return NewServer(&config.Config{}, svc)
 }

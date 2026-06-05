@@ -49,6 +49,18 @@ docker-compose-down:
 	@echo "Stopping services..."
 	$(DOCKER_COMPOSE) down
 
+# Run the full stack locally (Postgres + NATS + all services)
+run:
+	@./scripts/run.sh
+
+# Run the full stack and seed a demo product/location
+run-seed:
+	@./scripts/run.sh --seed
+
+# Stop the local Docker infrastructure
+stop:
+	docker compose -f deployments/docker/docker-compose.yml down
+
 # Development helpers
 dev-deps:
 	@echo "Installing development dependencies..."
