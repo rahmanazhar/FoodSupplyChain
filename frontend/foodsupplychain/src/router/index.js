@@ -4,6 +4,7 @@ import InventoryView from '../views/InventoryView.vue'
 import ShipmentsView from '../views/ShipmentsView.vue'
 import CatalogView from '../views/CatalogView.vue'
 import LoginView from '../views/LoginView.vue'
+import RegisterView from '../views/RegisterView.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
@@ -34,17 +35,23 @@ const router = createRouter({
       name: 'login',
       component: LoginView,
       meta: { blank: true, public: true }
+    },
+    {
+      path: '/register',
+      name: 'register',
+      component: RegisterView,
+      meta: { blank: true, public: true }
     }
   ]
 })
 
-// Require a signed-in session for every route except the login page.
+// Require a signed-in session for every route except the public auth pages.
 router.beforeEach((to) => {
   const auth = useAuthStore()
   if (!to.meta.public && !auth.isAuthenticated) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
-  if (to.path === '/login' && auth.isAuthenticated) {
+  if ((to.path === '/login' || to.path === '/register') && auth.isAuthenticated) {
     return { path: '/' }
   }
 })

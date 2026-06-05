@@ -38,6 +38,7 @@ services:
       - DB_PASSWORD=supplychain123
       - DB_NAME=supplychain
       - NATS_URL=nats://nats:4222
+      - JWT_SECRET=your-secret-key-here
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,6 +58,7 @@ services:
       - DB_PASSWORD=supplychain123
       - DB_NAME=supplychain
       - NATS_URL=nats://nats:4222
+      - JWT_SECRET=your-secret-key-here
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,11 +74,21 @@ services:
     environment:
       - INVENTORY_SERVICE_URL=http://inventory-service:8080
       - SHIPMENT_SERVICE_URL=http://shipment-service:8080
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=supplychain
+      - DB_PASSWORD=supplychain123
+      - DB_NAME=supplychain
+      - JWT_SECRET=your-secret-key-here
     ports:
       - "3000:3000"
     depends_on:
-      - inventory-service
-      - shipment-service
+      postgres:
+        condition: service_healthy
+      inventory-service:
+        condition: service_started
+      shipment-service:
+        condition: service_started
 
 volumes:
   postgres_data:

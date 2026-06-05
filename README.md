@@ -153,16 +153,25 @@ npm run lint       # Run linter
 
 ## Authentication
 
-Authentication uses signed JWTs (HMAC-SHA256). The token manager and the
-role-based access-control middleware live in [`pkg/auth`](pkg/auth).
+Users sign in with a username and password. The API gateway owns a
+database-backed user store (bcrypt-hashed passwords) and issues signed JWTs
+(HMAC-SHA256); the JWT helpers and role-based middleware live in
+[`pkg/auth`](pkg/auth).
 
-- The shipment service protects its `/api/v1` routes — requests must send an
-  `Authorization: Bearer <token>` header. Deleting a shipment additionally
-  requires the `admin` or `manager` role.
-- The inventory service endpoints are currently unauthenticated to keep the
-  Vue frontend integration simple.
-- Configure the signing secret via the `auth.jwt_secret` config value or the
-  `JWT_SECRET` environment variable.
+Endpoints (on the gateway):
+
+- `POST /auth/register` — create an account (new users get the `viewer` role)
+- `POST /auth/login` — exchange credentials for a JWT
+- `GET /auth/me` — the current user (requires a bearer token)
+
+Downstream, the shipment service validates the gateway-issued token on its
+`/api/v1` routes; deleting a shipment additionally requires the `admin` or
+`manager` role. The gateway and shipment service share the signing secret via
+the `JWT_SECRET` environment variable (`scripts/run.sh` generates a fresh random
+one per run).
+
+Seeded demo accounts (created on first run): `admin/admin123`,
+`manager/manager123`, `operator/operator123`, `viewer/viewer123`.
 
 Roles, from most to least privileged: `admin`, `manager`, `operator`, `viewer`.
 

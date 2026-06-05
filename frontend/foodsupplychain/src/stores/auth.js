@@ -45,9 +45,16 @@ export const useAuthStore = defineStore('auth', () => {
     setToken('')
   }
 
-  // login obtains a JWT from the gateway's /auth/login for the chosen role.
-  async function login(role, username = '') {
-    const data = await authApi.login(username, role)
+  // login exchanges username + password for a JWT.
+  async function login(username, password) {
+    const data = await authApi.login(username, password)
+    setToken(data.token)
+    return data
+  }
+
+  // register creates an account and signs the user in with the returned token.
+  async function register(payload) {
+    const data = await authApi.register(payload)
     setToken(data.token)
     return data
   }
@@ -56,5 +63,5 @@ export const useAuthStore = defineStore('auth', () => {
     clear()
   }
 
-  return { token, isAuthenticated, claims, role, subject, setToken, clear, login, logout }
+  return { token, isAuthenticated, claims, role, subject, setToken, clear, login, register, logout }
 })

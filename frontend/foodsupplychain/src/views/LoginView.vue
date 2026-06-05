@@ -6,35 +6,29 @@
         <p class="mt-2 text-sm text-gray-500">Sign in to manage inventory and shipments.</p>
       </div>
 
-      <div class="mt-8 card">
-        <label class="block text-sm font-medium text-gray-700">Username <span class="text-gray-400">(optional)</span></label>
-        <input v-model="username" type="text" class="input mt-1" placeholder="e.g. alice" @keyup.enter="signIn" />
+      <form class="mt-8 card" @submit.prevent="signIn">
+        <label class="block text-sm font-medium text-gray-700">Username</label>
+        <input v-model="username" type="text" autocomplete="username" class="input mt-1" placeholder="username" />
 
-        <label class="mt-4 block text-sm font-medium text-gray-700">Role</label>
-        <div class="mt-2 grid grid-cols-2 gap-2">
-          <button
-            v-for="r in roles"
-            :key="r.value"
-            type="button"
-            class="rounded-md border px-3 py-2 text-sm text-left transition"
-            :class="role === r.value ? 'border-primary-500 ring-2 ring-primary-200 bg-primary-50' : 'border-gray-300 hover:border-gray-400'"
-            @click="role = r.value"
-          >
-            <span class="block font-medium text-gray-900 capitalize">{{ r.value }}</span>
-            <span class="block text-xs text-gray-500">{{ r.hint }}</span>
-          </button>
-        </div>
+        <label class="mt-4 block text-sm font-medium text-gray-700">Password</label>
+        <input v-model="password" type="password" autocomplete="current-password" class="input mt-1" placeholder="••••••••" />
 
         <p v-if="error" class="mt-4 text-sm text-red-600">{{ error }}</p>
 
-        <button type="button" class="btn-primary w-full mt-6" :disabled="loading" @click="signIn">
+        <button type="submit" class="btn-primary w-full mt-6" :disabled="loading">
           {{ loading ? 'Signing in…' : 'Sign in' }}
         </button>
 
-        <p class="mt-4 text-xs text-gray-400 text-center">
-          Tokens are issued by the gateway and signed with a per-run secret — nothing to paste.
+        <p class="mt-4 text-sm text-center text-gray-500">
+          No account?
+          <router-link to="/register" class="text-primary-600 hover:text-primary-700 font-medium">Create one</router-link>
         </p>
-      </div>
+
+        <div class="mt-4 rounded-md bg-gray-50 p-3 text-xs text-gray-500">
+          Demo accounts (seeded): <code>admin / admin123</code>, <code>manager / manager123</code>,
+          <code>operator / operator123</code>, <code>viewer / viewer123</code>.
+        </div>
+      </form>
     </div>
   </div>
 </template>
@@ -48,23 +42,20 @@ const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
-const roles = [
-  { value: 'admin', hint: 'Full access incl. delete' },
-  { value: 'manager', hint: 'Manage & delete shipments' },
-  { value: 'operator', hint: 'Create & update' },
-  { value: 'viewer', hint: 'Read-only' }
-]
-
 const username = ref('')
-const role = ref('admin')
+const password = ref('')
 const loading = ref(false)
 const error = ref('')
 
 const signIn = async () => {
+  if (!username.value || !password.value) {
+    error.value = 'Enter your username and password'
+    return
+  }
   loading.value = true
   error.value = ''
   try {
-    await auth.login(role.value, username.value.trim())
+    await auth.login(username.value.trim(), password.value)
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
     router.replace(redirect)
   } catch (err) {

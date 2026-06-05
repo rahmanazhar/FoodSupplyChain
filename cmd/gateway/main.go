@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/rahmanazhar/FoodSupplyChain/internal/gateway"
 	"github.com/rahmanazhar/FoodSupplyChain/pkg/auth"
 )
 
@@ -59,6 +59,13 @@ func main() {
 
 	authManager := auth.NewManager(cfg.JWTSecret, cfg.TokenTTL)
 
+	// Database-backed user authentication. The gateway and shipment service
+	// share JWT_SECRET so gateway-issued tokens validate downstream.
+	gatewayAuth, err := gateway.NewAuth(databaseDSN(), authManager)
+	if err != nil {
+		log.Fatalf("Failed to initialise auth: %v", err)
+	}
+
 	router := mux.NewRouter()
 	router.Use(corsMiddleware)
 
@@ -67,9 +74,8 @@ func main() {
 		w.Write([]byte("OK"))
 	}).Methods(http.MethodGet, http.MethodOptions)
 
-	// Issues a JWT for the selected role. This is a development-grade sign-in
-	// (no password store); the gateway and shipment service share JWT_SECRET.
-	router.HandleFunc("/auth/login", loginHandler(authManager, cfg.TokenTTL)).Methods(http.MethodPost, http.MethodOptions)
+	// User authentication: /auth/register, /auth/login and /auth/me.
+	gatewayAuth.RegisterRoutes(router)
 
 	setupProxyRoutes(router, cfg)
 
@@ -154,55 +160,16 @@ func createReverseProxy(target *url.URL, pathPrefix string) *httputil.ReversePro
 	return proxy
 }
 
-// loginHandler issues a JWT for a requested role. Roles are validated against
-// the known set; the subject defaults to the role name when no username is given.
-func loginHandler(manager *auth.Manager, ttl time.Duration) http.HandlerFunc {
-	allowed := map[string]bool{
-		auth.RoleAdmin:    true,
-		auth.RoleManager:  true,
-		auth.RoleOperator: true,
-		auth.RoleViewer:   true,
-	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Username string `json:"username"`
-			Role     string `json:"role"`
-			Tenant   string `json:"tenant"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-			return
-		}
-		if body.Role == "" {
-			body.Role = auth.RoleViewer
-		}
-		if !allowed[body.Role] {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown role"})
-			return
-		}
-		subject := body.Username
-		if subject == "" {
-			subject = body.Role
-		}
-
-		token, err := manager.GenerateToken(subject, body.Role, body.Tenant)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"token":      token,
-			"role":       body.Role,
-			"username":   subject,
-			"expires_in": int(ttl.Seconds()),
-		})
-	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+// databaseDSN builds the Postgres DSN from environment variables, defaulting to
+// the local docker-compose database (Postgres exposed on host port 5433).
+func databaseDSN() string {
+	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		getEnv("DB_HOST", "localhost"),
+		getEnv("DB_PORT", "5433"),
+		getEnv("DB_USER", "supplychain"),
+		getEnv("DB_PASSWORD", "supplychain123"),
+		getEnv("DB_NAME", "supplychain"),
+	)
 }
 
 func parseDuration(value string, fallback time.Duration) time.Duration {

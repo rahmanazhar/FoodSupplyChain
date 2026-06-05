@@ -21,17 +21,20 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: supplychain-config
           env:
-            - name: INVENTORY_SERVICE_URL
+            - name: DB_PASSWORD
               valueFrom:
-                configMapKeyRef:
-                  name: supplychain-config
-                  key: INVENTORY_SERVICE_URL
-            - name: SHIPMENT_SERVICE_URL
+                secretKeyRef:
+                  name: supplychain-secrets
+                  key: DB_PASSWORD
+            - name: JWT_SECRET
               valueFrom:
-                configMapKeyRef:
-                  name: supplychain-config
-                  key: SHIPMENT_SERVICE_URL
+                secretKeyRef:
+                  name: supplychain-secrets
+                  key: JWT_SECRET
           readinessProbe:
             httpGet:
               path: /health

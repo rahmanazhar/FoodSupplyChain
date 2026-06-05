@@ -55,8 +55,9 @@ export const locationApi = {
 }
 
 export const authApi = {
-  login: (username, role, tenant) =>
-    api.post('/auth/login', { username, role, tenant }).then((r) => r.data)
+  login: (username, password) => api.post('/auth/login', { username, password }).then((r) => r.data),
+  register: (payload) => api.post('/auth/register', payload).then((r) => r.data),
+  me: () => api.get('/auth/me').then((r) => r.data)
 }
 
 export const shipmentApi = {
