@@ -1,96 +1,71 @@
 <template>
-  <div>
-    <div class="md:flex md:items-center md:justify-between">
-      <div class="min-w-0 flex-1">
-        <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">
-          Inventory Management
-        </h2>
+  <div class="space-y-5">
+    <!-- Toolbar -->
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="relative w-full sm:max-w-xs">
+        <svg class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.3-4.3m1.8-4.7a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0z" /></svg>
+        <input v-model="search" type="text" class="input pl-9" placeholder="Search products or SKU…" />
       </div>
-      <div class="mt-4 flex md:ml-4 md:mt-0">
-        <button type="button" class="btn-primary" @click="openAddModal">Add Inventory Item</button>
+      <button class="btn-primary" @click="openAdd">
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+        Add Item
+      </button>
+    </div>
+
+    <!-- Table -->
+    <div class="card !p-0 overflow-hidden">
+      <div v-if="error" class="px-5 py-10 text-center">
+        <p class="text-sm text-red-600">{{ error }}</p>
+        <button class="btn-secondary mt-3" @click="load">Try again</button>
       </div>
-    </div>
 
-    <!-- Filters -->
-    <div class="mt-8 card">
-      <div class="flex flex-col sm:flex-row gap-4">
-        <div class="flex-1">
-          <label for="search" class="block text-sm font-medium text-gray-700">Search</label>
-          <input id="search" type="text" class="input mt-1" placeholder="Search by product or SKU…" v-model="searchQuery" />
-        </div>
-        <div class="sm:w-48">
-          <label for="category" class="block text-sm font-medium text-gray-700">Category</label>
-          <select id="category" class="input mt-1" v-model="selectedCategory">
-            <option value="">All Categories</option>
-            <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
-          </select>
-        </div>
-      </div>
-    </div>
+      <SkeletonRows v-else-if="loading" :rows="6" :cols="6" />
 
-    <div v-if="isLoading" class="mt-8 flex justify-center">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-    </div>
+      <EmptyState v-else-if="!items.length" title="No inventory items" message="Add your first item, or adjust your search." >
+        <template #action><button class="btn-primary" @click="openAdd">Add Item</button></template>
+      </EmptyState>
 
-    <div v-else-if="error" class="mt-8 rounded-md bg-red-50 p-4">
-      <h3 class="text-sm font-medium text-red-800">Error loading inventory</h3>
-      <p class="mt-2 text-sm text-red-700">{{ error }}</p>
-      <button type="button" class="btn-secondary mt-4" @click="load">Try Again</button>
-    </div>
-
-    <div v-else class="mt-8 card overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-300">
-          <thead>
+      <div v-else class="overflow-x-auto">
+        <table class="min-w-full">
+          <thead class="border-b border-slate-100 dark:border-slate-800">
             <tr>
-              <th class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">Product</th>
-              <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Category</th>
-              <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Location</th>
-              <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Quantity</th>
-              <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Unit Price</th>
-              <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Status</th>
-              <th class="relative py-3.5 pl-3 pr-4"><span class="sr-only">Actions</span></th>
+              <th class="th">Product</th>
+              <th class="th">Category</th>
+              <th class="th">Location</th>
+              <th class="th">Quantity</th>
+              <th class="th">Unit Price</th>
+              <th class="th">Status</th>
+              <th class="th text-right">Actions</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-gray-200">
-            <tr v-for="item in filtered" :key="item.id">
-              <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            <tr v-for="item in items" :key="item.id" class="row-hover">
+              <td class="td font-medium text-slate-900 dark:text-white">
                 {{ item.product?.name || '—' }}
-                <span class="block text-xs text-gray-400">{{ item.product?.sku }}</span>
+                <span class="block text-xs font-normal text-slate-400">{{ item.product?.sku }}</span>
               </td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ item.product?.category || '—' }}</td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ item.location?.name || '—' }}</td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                {{ item.quantity }}
-                <span class="text-xs text-gray-400">/ min {{ item.min_quantity }}</span>
+              <td class="td capitalize">{{ item.product?.category || '—' }}</td>
+              <td class="td">{{ item.location?.name || '—' }}</td>
+              <td class="td tabular-nums">{{ item.quantity }} <span class="text-xs text-slate-400">/ min {{ item.min_quantity }}</span></td>
+              <td class="td tabular-nums">${{ (item.product?.unit_price ?? 0).toFixed(2) }}</td>
+              <td class="td">
+                <span :class="isLow(item) ? 'badge-red' : 'badge-green'">{{ isLow(item) ? 'Low Stock' : 'In Stock' }}</span>
               </td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">${{ (item.product?.unit_price ?? 0).toFixed(2) }}</td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm">
-                <span :class="['inline-flex rounded-full px-2 text-xs font-semibold leading-5', isLow(item) ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800']">
-                  {{ isLow(item) ? 'Low Stock' : 'In Stock' }}
-                </span>
+              <td class="td text-right">
+                <button class="btn-ghost btn-sm" @click="openEdit(item)">Adjust</button>
+                <button class="btn-ghost btn-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10" @click="remove(item)">Delete</button>
               </td>
-              <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium">
-                <button class="text-primary-600 hover:text-primary-900 mr-2" @click="openEditModal(item)">Adjust</button>
-                <button class="text-red-600 hover:text-red-900" @click="remove(item)">Delete</button>
-              </td>
-            </tr>
-            <tr v-if="filtered.length === 0">
-              <td colspan="7" class="px-3 py-6 text-sm text-gray-500 text-center">No inventory items found.</td>
             </tr>
           </tbody>
         </table>
+        <PaginationBar :total="total" :limit="limit" :offset="offset" @change="goTo" />
       </div>
     </div>
 
-    <div v-if="toast.show" class="fixed bottom-4 right-4 rounded-md p-4 text-white" :class="toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'">
-      {{ toast.message }}
-    </div>
-
     <InventoryModal
-      :is-open="isModalOpen"
-      :is-editing="!!selectedItem"
-      :item="selectedItem"
+      :is-open="modalOpen"
+      :is-editing="!!selected"
+      :item="selected"
       :products="products"
       :locations="locations"
       @close="closeModal"
@@ -100,90 +75,95 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { inventoryApi, productApi, locationApi } from '@/services/api'
+import { useToastStore } from '@/stores/toast'
 import InventoryModal from '@/components/InventoryModal.vue'
+import SkeletonRows from '@/components/ui/SkeletonRows.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import PaginationBar from '@/components/ui/PaginationBar.vue'
 
-const inventory = ref([])
+const toast = useToastStore()
+const items = ref([])
 const products = ref([])
 const locations = ref([])
-const isLoading = ref(false)
+const total = ref(0)
+const limit = ref(20)
+const offset = ref(0)
+const search = ref('')
+const loading = ref(true)
 const error = ref(null)
-const searchQuery = ref('')
-const selectedCategory = ref('')
-const isModalOpen = ref(false)
-const selectedItem = ref(null)
-const toast = ref({ show: false, message: '', type: 'success' })
-
-const showToast = (message, type = 'success') => {
-  toast.value = { show: true, message, type }
-  setTimeout(() => (toast.value.show = false), 3000)
-}
+const modalOpen = ref(false)
+const selected = ref(null)
 
 const isLow = (item) => item.quantity <= item.min_quantity
 
-const categories = computed(() =>
-  [...new Set(products.value.map((p) => p.category).filter(Boolean))].sort()
-)
-
-const filtered = computed(() =>
-  inventory.value.filter((item) => {
-    const q = searchQuery.value.toLowerCase()
-    const name = (item.product?.name || '').toLowerCase()
-    const sku = (item.product?.sku || '').toLowerCase()
-    const matchesSearch = name.includes(q) || sku.includes(q)
-    const matchesCategory = !selectedCategory.value || item.product?.category === selectedCategory.value
-    return matchesSearch && matchesCategory
-  })
-)
-
 const load = async () => {
-  isLoading.value = true
+  loading.value = true
   error.value = null
   try {
-    const [inv, prods, locs] = await Promise.all([
-      inventoryApi.getAll(),
-      productApi.getAll(),
-      locationApi.getAll()
-    ])
-    inventory.value = inv || []
-    products.value = prods || []
-    locations.value = locs || []
+    const params = { limit: limit.value, offset: offset.value }
+    if (search.value.trim()) params.search = search.value.trim()
+    const res = await inventoryApi.list(params)
+    items.value = res.data || []
+    total.value = res.total || 0
   } catch (err) {
     error.value = err.message || 'Failed to load inventory'
   } finally {
-    isLoading.value = false
+    loading.value = false
   }
 }
 
-const openAddModal = () => {
-  selectedItem.value = null
-  isModalOpen.value = true
+const loadRefs = async () => {
+  try {
+    const [p, l] = await Promise.all([productApi.getAll(), locationApi.getAll()])
+    products.value = p || []
+    locations.value = l || []
+  } catch {
+    /* dropdown data is best-effort */
+  }
 }
 
-const openEditModal = (item) => {
-  selectedItem.value = item
-  isModalOpen.value = true
+const goTo = (newOffset) => {
+  offset.value = newOffset
+  load()
 }
 
+let debounce
+watch(search, () => {
+  clearTimeout(debounce)
+  debounce = setTimeout(() => {
+    offset.value = 0
+    load()
+  }, 300)
+})
+
+const openAdd = () => {
+  selected.value = null
+  modalOpen.value = true
+}
+const openEdit = (item) => {
+  selected.value = item
+  modalOpen.value = true
+}
 const closeModal = () => {
-  selectedItem.value = null
-  isModalOpen.value = false
+  selected.value = null
+  modalOpen.value = false
 }
 
 const handleSubmit = async (payload) => {
   try {
-    if (selectedItem.value) {
-      await inventoryApi.updateQuantity(selectedItem.value.id, payload.quantity)
-      showToast('Quantity updated')
+    if (selected.value) {
+      await inventoryApi.updateQuantity(selected.value.id, payload.quantity)
+      toast.success('Quantity updated')
     } else {
       await inventoryApi.create(payload)
-      showToast('Inventory item created')
+      toast.success('Inventory item created')
     }
     closeModal()
     await load()
   } catch (err) {
-    showToast(err.message || 'Operation failed', 'error')
+    toast.error(err.message || 'Operation failed')
   }
 }
 
@@ -191,12 +171,16 @@ const remove = async (item) => {
   if (!confirm(`Delete inventory for "${item.product?.name || item.id}"?`)) return
   try {
     await inventoryApi.remove(item.id)
-    showToast('Inventory item deleted')
+    toast.success('Inventory item deleted')
+    if (items.value.length === 1 && offset.value > 0) offset.value -= limit.value
     await load()
   } catch (err) {
-    showToast(err.message || 'Failed to delete', 'error')
+    toast.error(err.message || 'Failed to delete')
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadRefs()
+})
 </script>

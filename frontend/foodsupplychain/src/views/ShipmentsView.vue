@@ -1,204 +1,175 @@
 <template>
-  <div>
-    <div class="md:flex md:items-center md:justify-between">
-      <div class="min-w-0 flex-1">
-        <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">
-          Shipment Tracking
-        </h2>
-      </div>
-      <div class="mt-4 flex md:ml-4 md:mt-0">
-        <button type="button" class="btn-primary" :disabled="!auth.isAuthenticated" @click="openCreate">
-          Create Shipment
-        </button>
-      </div>
-    </div>
-
-    <!-- Auth notice -->
-    <div v-if="!auth.isAuthenticated" class="mt-8 rounded-md bg-amber-50 p-4 text-sm text-amber-800">
-      Shipment endpoints require a JWT. Set an API token from the top bar
-      (mint one with <code>go run ./cmd/token -role admin</code>) to manage shipments.
-    </div>
-
-    <template v-else>
-      <!-- Filters -->
-      <div class="mt-8 card">
-        <div class="flex flex-col sm:flex-row gap-4">
-          <div class="flex-1">
-            <label for="search" class="block text-sm font-medium text-gray-700">Search</label>
-            <input id="search" type="text" class="input mt-1" placeholder="Search by id, order, origin…" v-model="searchQuery" />
-          </div>
-          <div class="sm:w-48">
-            <label for="status" class="block text-sm font-medium text-gray-700">Status</label>
-            <select id="status" class="input mt-1" v-model="selectedStatus">
-              <option value="">All Status</option>
-              <option v-for="s in statuses" :key="s" :value="s">{{ s.replace('_', ' ') }}</option>
-            </select>
-          </div>
+  <div class="space-y-5">
+    <!-- Toolbar -->
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+        <div class="relative w-full sm:max-w-xs">
+          <svg class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.3-4.3m1.8-4.7a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0z" /></svg>
+          <input v-model="search" type="text" class="input pl-9" placeholder="Search order, origin, destination…" />
         </div>
+        <select v-model="statusFilter" class="input sm:w-44" @change="reset">
+          <option value="">All statuses</option>
+          <option v-for="s in statuses" :key="s" :value="s">{{ s.replace('_', ' ') }}</option>
+        </select>
       </div>
+      <button class="btn-primary" @click="modalOpen = true">
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+        Create Shipment
+      </button>
+    </div>
 
-      <div v-if="isLoading" class="mt-8 flex justify-center">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
+    <div v-if="error" class="card text-center">
+      <p class="text-sm text-red-600">{{ error }}</p>
+      <button class="btn-secondary mt-3" @click="load">Try again</button>
+    </div>
 
-      <div v-else-if="error" class="mt-8 rounded-md bg-red-50 p-4">
-        <h3 class="text-sm font-medium text-red-800">Error loading shipments</h3>
-        <p class="mt-2 text-sm text-red-700">{{ error }}</p>
-        <button type="button" class="btn-secondary mt-4" @click="load">Try Again</button>
-      </div>
+    <div v-else-if="loading" class="space-y-4">
+      <div v-for="n in 4" :key="n" class="card"><div class="h-16 skeleton"></div></div>
+    </div>
 
-      <div v-else class="mt-8 space-y-4">
-        <div v-for="shipment in filtered" :key="shipment.id" class="card">
-          <div class="flex items-start justify-between">
-            <div class="flex items-center">
-              <div :class="['h-12 w-12 rounded-full flex items-center justify-center', color(shipment.status).bg]">
-                <svg class="h-6 w-6" :class="color(shipment.status).text" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM9 17h6m4 0a2 2 0 11-4 0 2 2 0 014 0zM13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a2 2 0 104 0" />
-                </svg>
-              </div>
-              <div class="ml-4">
-                <h3 class="text-lg font-medium">Order {{ shipment.order_id }}</h3>
-                <div class="mt-1 flex items-center gap-2">
-                  <span :class="['inline-flex rounded-full px-2 text-xs font-semibold leading-5', color(shipment.status).badge]">
-                    {{ (shipment.status || '').replace('_', ' ').toUpperCase() }}
-                  </span>
-                  <span class="text-xs text-gray-400">#{{ shipment.id.slice(0, 8) }}</span>
-                </div>
-              </div>
+    <div v-else-if="!items.length" class="card">
+      <EmptyState title="No shipments" message="Create your first shipment or change your filters.">
+        <template #action><button class="btn-primary" @click="modalOpen = true">Create Shipment</button></template>
+      </EmptyState>
+    </div>
+
+    <div v-else class="space-y-4">
+      <div v-for="s in items" :key="s.id" class="card transition-shadow hover:shadow-card-hover">
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex items-center gap-4">
+            <div class="flex h-11 w-11 items-center justify-center rounded-lg" :class="tone(s.status)">
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zM13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1" /></svg>
             </div>
-            <div class="flex items-center gap-3 text-sm">
-              <button class="text-primary-600 hover:text-primary-900 font-medium" @click="toggleTrack(shipment)">
-                {{ trackingId === shipment.id ? 'Hide' : 'Track' }}
-              </button>
-              <button class="text-red-600 hover:text-red-900 font-medium" @click="remove(shipment)">Delete</button>
-            </div>
-          </div>
-
-          <div class="mt-4 border-t border-gray-200 pt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
             <div>
-              <span class="font-medium text-gray-900">From:</span>
-              <span class="ml-1 text-gray-500">{{ shipment.origin }}</span>
-              <span class="mx-2 text-gray-300">→</span>
-              <span class="font-medium text-gray-900">To:</span>
-              <span class="ml-1 text-gray-500">{{ shipment.destination }}</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <select class="input !py-1 !w-auto" :value="shipment.status" @change="changeStatus(shipment, $event.target.value)">
-                <option v-for="s in statuses" :key="s" :value="s">{{ s.replace('_', ' ') }}</option>
-              </select>
+              <p class="font-semibold text-slate-900 dark:text-white">Order {{ s.order_id }}</p>
+              <div class="mt-1 flex items-center gap-2">
+                <span :class="badge(s.status)">{{ (s.status || '').replace('_', ' ') }}</span>
+                <span class="text-xs text-slate-400">#{{ s.id.slice(0, 8) }}</span>
+              </div>
             </div>
           </div>
-
-          <!-- Tracking timeline -->
-          <div v-if="trackingId === shipment.id" class="mt-4 border-t border-gray-200 pt-4">
-            <h4 class="text-sm font-medium text-gray-900 mb-3">Tracking history</h4>
-            <div v-if="trackEvents.length === 0" class="text-sm text-gray-400">No events yet.</div>
-            <ol v-else class="relative border-l border-gray-200 ml-2">
-              <li v-for="ev in trackEvents" :key="ev.id" class="mb-4 ml-4">
-                <div class="absolute w-2 h-2 bg-primary-500 rounded-full -left-1 mt-1.5"></div>
-                <p class="text-sm font-medium text-gray-900">{{ ev.description || ev.type }}</p>
-                <p class="text-xs text-gray-400">
-                  {{ formatDate(ev.created_at) }}<span v-if="ev.location"> · {{ ev.location }}</span>
-                </p>
-              </li>
-            </ol>
+          <div class="flex items-center gap-2">
+            <button class="btn-ghost btn-sm" @click="toggleTrack(s)">{{ trackingId === s.id ? 'Hide' : 'Track' }}</button>
+            <button class="btn-ghost btn-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10" @click="remove(s)">Delete</button>
           </div>
         </div>
 
-        <div v-if="filtered.length === 0" class="card text-center text-sm text-gray-500">No shipments found.</div>
-      </div>
-    </template>
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 text-sm dark:border-slate-800">
+          <p class="text-slate-500 dark:text-slate-400">
+            <span class="font-medium text-slate-700 dark:text-slate-300">{{ s.origin }}</span>
+            <span class="mx-2 text-slate-300">→</span>
+            <span class="font-medium text-slate-700 dark:text-slate-300">{{ s.destination }}</span>
+          </p>
+          <select class="input !w-auto !py-1.5 text-xs" :value="s.status" @change="changeStatus(s, $event.target.value)">
+            <option v-for="st in statuses" :key="st" :value="st">{{ st.replace('_', ' ') }}</option>
+          </select>
+        </div>
 
-    <div v-if="toast.show" class="fixed bottom-4 right-4 rounded-md p-4 text-white" :class="toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'">
-      {{ toast.message }}
+        <div v-if="trackingId === s.id" class="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+          <p class="mb-3 text-sm font-medium text-slate-900 dark:text-white">Tracking history</p>
+          <p v-if="!trackEvents.length" class="text-sm text-slate-400">No events yet.</p>
+          <ol v-else class="relative ml-2 border-l border-slate-200 dark:border-slate-700">
+            <li v-for="ev in trackEvents" :key="ev.id" class="mb-4 ml-4">
+              <span class="absolute -left-1 mt-1.5 h-2 w-2 rounded-full bg-primary-500"></span>
+              <p class="text-sm font-medium text-slate-900 dark:text-white">{{ ev.description || ev.type }}</p>
+              <p class="text-xs text-slate-400">{{ formatDate(ev.created_at) }}<span v-if="ev.location"> · {{ ev.location }}</span></p>
+            </li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="card !p-0"><PaginationBar :total="total" :limit="limit" :offset="offset" @change="goTo" /></div>
     </div>
 
-    <ShipmentModal :is-open="isModalOpen" @close="isModalOpen = false" @submit="handleCreate" />
+    <ShipmentModal :is-open="modalOpen" @close="modalOpen = false" @submit="handleCreate" />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { shipmentApi } from '@/services/api'
-import { useAuthStore } from '@/stores/auth'
+import { useToastStore } from '@/stores/toast'
 import ShipmentModal from '@/components/ShipmentModal.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import PaginationBar from '@/components/ui/PaginationBar.vue'
 
-const auth = useAuthStore()
+const toast = useToastStore()
 const statuses = ['pending', 'in_transit', 'delivered', 'cancelled']
 
-const shipments = ref([])
-const isLoading = ref(false)
+const items = ref([])
+const total = ref(0)
+const limit = ref(20)
+const offset = ref(0)
+const search = ref('')
+const statusFilter = ref('')
+const loading = ref(true)
 const error = ref(null)
-const searchQuery = ref('')
-const selectedStatus = ref('')
-const isModalOpen = ref(false)
+const modalOpen = ref(false)
 const trackingId = ref(null)
 const trackEvents = ref([])
-const toast = ref({ show: false, message: '', type: 'success' })
-
-const showToast = (message, type = 'success') => {
-  toast.value = { show: true, message, type }
-  setTimeout(() => (toast.value.show = false), 3000)
-}
-
-const palette = {
-  pending: { bg: 'bg-yellow-100', text: 'text-yellow-600', badge: 'bg-yellow-100 text-yellow-800' },
-  in_transit: { bg: 'bg-blue-100', text: 'text-blue-600', badge: 'bg-blue-100 text-blue-800' },
-  delivered: { bg: 'bg-green-100', text: 'text-green-600', badge: 'bg-green-100 text-green-800' },
-  cancelled: { bg: 'bg-gray-100', text: 'text-gray-500', badge: 'bg-gray-100 text-gray-700' }
-}
-const color = (status) => palette[status] || palette.pending
 
 const formatDate = (d) => (d ? new Date(d).toLocaleString() : '')
-
-const filtered = computed(() =>
-  shipments.value.filter((s) => {
-    const q = searchQuery.value.toLowerCase()
-    const matchesSearch =
-      s.id.toLowerCase().includes(q) ||
-      (s.order_id || '').toLowerCase().includes(q) ||
-      (s.origin || '').toLowerCase().includes(q) ||
-      (s.destination || '').toLowerCase().includes(q)
-    const matchesStatus = !selectedStatus.value || s.status === selectedStatus.value
-    return matchesSearch && matchesStatus
-  })
-)
+const tones = {
+  pending: 'bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400',
+  in_transit: 'bg-primary-100 text-primary-600 dark:bg-primary-500/15 dark:text-primary-400',
+  delivered: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
+  cancelled: 'bg-slate-100 text-slate-500 dark:bg-slate-700/50 dark:text-slate-300',
+}
+const tone = (s) => tones[s] || tones.pending
+const badge = (s) => ({ pending: 'badge-yellow', in_transit: 'badge-blue', delivered: 'badge-green', cancelled: 'badge-gray' }[s] || 'badge-gray')
 
 const load = async () => {
-  if (!auth.isAuthenticated) return
-  isLoading.value = true
+  loading.value = true
   error.value = null
   try {
-    shipments.value = (await shipmentApi.getAll()) || []
+    const params = { limit: limit.value, offset: offset.value }
+    if (search.value.trim()) params.search = search.value.trim()
+    if (statusFilter.value) params.status = statusFilter.value
+    const res = await shipmentApi.list(params)
+    items.value = res.data || []
+    total.value = res.total || 0
   } catch (err) {
     error.value = err.message || 'Failed to load shipments'
   } finally {
-    isLoading.value = false
+    loading.value = false
   }
 }
 
-const openCreate = () => (isModalOpen.value = true)
+const reset = () => {
+  offset.value = 0
+  load()
+}
+const goTo = (newOffset) => {
+  offset.value = newOffset
+  load()
+}
+
+let debounce
+watch(search, () => {
+  clearTimeout(debounce)
+  debounce = setTimeout(reset, 300)
+})
 
 const handleCreate = async (payload) => {
   try {
     await shipmentApi.create(payload)
-    isModalOpen.value = false
-    showToast('Shipment created')
+    modalOpen.value = false
+    toast.success('Shipment created')
     await load()
   } catch (err) {
-    showToast(err.message || 'Failed to create shipment', 'error')
+    toast.error(err.message || 'Failed to create shipment')
   }
 }
 
-const changeStatus = async (shipment, status) => {
-  if (status === shipment.status) return
+const changeStatus = async (s, status) => {
+  if (status === s.status) return
   try {
-    await shipmentApi.updateStatus(shipment.id, status, '')
-    showToast(`Status updated to ${status.replace('_', ' ')}`)
+    await shipmentApi.updateStatus(s.id, status, '')
+    toast.success(`Status updated to ${status.replace('_', ' ')}`)
     await load()
-    if (trackingId.value === shipment.id) await loadTrack(shipment.id)
+    if (trackingId.value === s.id) await loadTrack(s.id)
   } catch (err) {
-    showToast(err.message || 'Failed to update status', 'error')
+    toast.error(err.message || 'Failed to update status')
     await load()
   }
 }
@@ -207,32 +178,31 @@ const loadTrack = async (id) => {
   const data = await shipmentApi.track(id)
   trackEvents.value = data.events || []
 }
-
-const toggleTrack = async (shipment) => {
-  if (trackingId.value === shipment.id) {
+const toggleTrack = async (s) => {
+  if (trackingId.value === s.id) {
     trackingId.value = null
     trackEvents.value = []
     return
   }
-  trackingId.value = shipment.id
+  trackingId.value = s.id
   try {
-    await loadTrack(shipment.id)
+    await loadTrack(s.id)
   } catch (err) {
-    showToast(err.message || 'Failed to load tracking', 'error')
+    toast.error(err.message || 'Failed to load tracking')
   }
 }
 
-const remove = async (shipment) => {
-  if (!confirm(`Delete shipment for order "${shipment.order_id}"?`)) return
+const remove = async (s) => {
+  if (!confirm(`Delete shipment for order "${s.order_id}"?`)) return
   try {
-    await shipmentApi.remove(shipment.id)
-    showToast('Shipment deleted')
+    await shipmentApi.remove(s.id)
+    toast.success('Shipment deleted')
+    if (items.value.length === 1 && offset.value > 0) offset.value -= limit.value
     await load()
   } catch (err) {
-    showToast(err.message || 'Failed to delete (admin/manager role required)', 'error')
+    toast.error(err.message || 'Failed to delete (admin/manager role required)')
   }
 }
 
-watch(() => auth.token, load)
 onMounted(load)
 </script>

@@ -34,12 +34,18 @@ api.interceptors.response.use(
   }
 )
 
+// List endpoints return a paginated envelope: { data, total, limit, offset }.
 export const inventoryApi = {
-  getAll: () => api.get('/inventory').then((r) => r.data),
+  list: (params = {}) => api.get('/inventory', { params }).then((r) => r.data),
   get: (id) => api.get(`/inventory/${id}`).then((r) => r.data),
   create: (data) => api.post('/inventory', data).then((r) => r.data),
   updateQuantity: (id, quantity) => api.put(`/inventory/${id}`, { quantity }).then((r) => r.data),
   remove: (id) => api.delete(`/inventory/${id}`).then((r) => r.data)
+}
+
+export const userApi = {
+  list: () => api.get('/users').then((r) => r.data),
+  updateRole: (id, role) => api.patch(`/users/${id}`, { role }).then((r) => r.data)
 }
 
 export const productApi = {
@@ -57,11 +63,12 @@ export const locationApi = {
 export const authApi = {
   login: (username, password) => api.post('/auth/login', { username, password }).then((r) => r.data),
   register: (payload) => api.post('/auth/register', payload).then((r) => r.data),
-  me: () => api.get('/auth/me').then((r) => r.data)
+  me: () => api.get('/auth/me').then((r) => r.data),
+  refresh: () => api.post('/auth/refresh').then((r) => r.data)
 }
 
 export const shipmentApi = {
-  getAll: () => api.get('/shipments').then((r) => r.data),
+  list: (params = {}) => api.get('/shipments', { params }).then((r) => r.data),
   get: (id) => api.get(`/shipments/${id}`).then((r) => r.data),
   create: (data) => api.post('/shipments', data).then((r) => r.data),
   update: (id, data) => api.put(`/shipments/${id}`, data).then((r) => r.data),

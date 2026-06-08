@@ -3,6 +3,7 @@ import DashboardView from '../views/DashboardView.vue'
 import InventoryView from '../views/InventoryView.vue'
 import ShipmentsView from '../views/ShipmentsView.vue'
 import CatalogView from '../views/CatalogView.vue'
+import UsersView from '../views/UsersView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -31,6 +32,12 @@ const router = createRouter({
       component: CatalogView
     },
     {
+      path: '/users',
+      name: 'users',
+      component: UsersView,
+      meta: { admin: true }
+    },
+    {
       path: '/login',
       name: 'login',
       component: LoginView,
@@ -52,6 +59,10 @@ router.beforeEach((to) => {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
   if ((to.path === '/login' || to.path === '/register') && auth.isAuthenticated) {
+    return { path: '/' }
+  }
+  // Admin-only routes.
+  if (to.meta.admin && auth.role !== 'admin') {
     return { path: '/' }
   }
 })

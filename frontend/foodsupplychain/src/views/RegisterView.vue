@@ -1,9 +1,12 @@
 <template>
-  <div class="min-h-screen bg-gray-50 flex flex-col justify-center px-4">
+  <div class="flex min-h-screen flex-col justify-center bg-slate-50 px-4 dark:bg-slate-950">
     <div class="mx-auto w-full max-w-md">
       <div class="text-center">
-        <h1 class="text-2xl font-bold text-primary-600">FoodSupplyChain</h1>
-        <p class="mt-2 text-sm text-gray-500">Create an account.</p>
+        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-600 text-white">
+          <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+        </div>
+        <h1 class="text-2xl font-bold text-slate-900 dark:text-white">FoodSupplyChain</h1>
+        <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Create an account.</p>
       </div>
 
       <form class="mt-8 card" @submit.prevent="submit">
@@ -25,12 +28,12 @@
           {{ loading ? 'Creating…' : 'Create account' }}
         </button>
 
-        <p class="mt-4 text-sm text-center text-gray-500">
+        <p class="mt-4 text-center text-sm text-slate-500 dark:text-slate-400">
           Already have an account?
-          <router-link to="/login" class="text-primary-600 hover:text-primary-700 font-medium">Sign in</router-link>
+          <router-link to="/login" class="font-medium text-primary-600 hover:text-primary-700">Sign in</router-link>
         </p>
 
-        <p class="mt-3 text-xs text-center text-gray-400">New accounts start with the read-only <strong>viewer</strong> role.</p>
+        <p class="mt-3 text-center text-xs text-slate-400">New accounts start with the read-only <strong>viewer</strong> role.</p>
       </form>
     </div>
   </div>
