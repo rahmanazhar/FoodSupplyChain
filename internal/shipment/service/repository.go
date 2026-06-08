@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -15,13 +16,36 @@ import (
 // it to an HTTP 404 response.
 var ErrNotFound = errors.New("record not found")
 
-// ListShipments returns all shipments.
-func (s *ShipmentService) ListShipments(ctx context.Context) ([]models.Shipment, error) {
-	var shipments []models.Shipment
-	if err := s.db.WithContext(ctx).Find(&shipments).Error; err != nil {
-		return nil, fmt.Errorf("failed to list shipments: %w", err)
+// ListShipments returns a page of shipments and the total number of matching
+// records. When search is non-empty it filters by order_id/origin/destination/id
+// (case-insensitively); when status is non-empty it filters by exact status.
+func (s *ShipmentService) ListShipments(ctx context.Context, limit, offset int, search, status string) ([]models.Shipment, int, error) {
+	base := s.db.WithContext(ctx).Model(&models.Shipment{})
+	if search != "" {
+		like := "%" + strings.ToLower(search) + "%"
+		base = base.Where(
+			"LOWER(order_id) LIKE ? OR LOWER(origin) LIKE ? OR LOWER(destination) LIKE ? OR LOWER(id) LIKE ?",
+			like, like, like, like,
+		)
 	}
-	return shipments, nil
+	if status != "" {
+		base = base.Where("status = ?", status)
+	}
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count shipments: %w", err)
+	}
+
+	var shipments []models.Shipment
+	if err := base.
+		Order("created_at desc").
+		Limit(limit).
+		Offset(offset).
+		Find(&shipments).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to list shipments: %w", err)
+	}
+	return shipments, int(total), nil
 }
 
 // GetShipment returns a single shipment by ID, or ErrNotFound.

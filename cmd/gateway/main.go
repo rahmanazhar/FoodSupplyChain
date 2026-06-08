@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/rahmanazhar/FoodSupplyChain/internal/gateway"
 	"github.com/rahmanazhar/FoodSupplyChain/pkg/auth"
+	"github.com/rahmanazhar/FoodSupplyChain/pkg/httpx"
+	"github.com/rahmanazhar/FoodSupplyChain/pkg/metrics"
 )
 
 type Config struct {
@@ -57,6 +60,9 @@ func main() {
 		IdleTimeout:      120 * time.Second,
 	}
 
+	// Structured JSON logging to stdout for the whole process.
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
 	authManager := auth.NewManager(cfg.JWTSecret, cfg.TokenTTL)
 
 	// Database-backed user authentication. The gateway and shipment service
@@ -66,7 +72,16 @@ func main() {
 		log.Fatalf("Failed to initialise auth: %v", err)
 	}
 
+	collector := metrics.NewCollector()
+
 	router := mux.NewRouter()
+	// Shared, structured middleware applied to every request. CORS stays last
+	// (closest to the handler) so it can still short-circuit OPTIONS requests.
+	router.Use(httpx.RequestID)
+	router.Use(httpx.Logger(logger))
+	router.Use(httpx.Recoverer(logger))
+	router.Use(httpx.SecurityHeaders)
+	router.Use(collector.Instrument)
 	router.Use(corsMiddleware)
 
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -74,8 +89,12 @@ func main() {
 		w.Write([]byte("OK"))
 	}).Methods(http.MethodGet, http.MethodOptions)
 
-	// User authentication: /auth/register, /auth/login and /auth/me.
-	gatewayAuth.RegisterRoutes(router)
+	router.Handle("/metrics", collector.Handler()).Methods(http.MethodGet, http.MethodOptions)
+
+	// User authentication and management. Login/register are rate-limited per
+	// client IP to blunt credential-stuffing/abuse.
+	loginLimiter := httpx.RateLimit(5, 10)
+	gatewayAuth.RegisterRoutes(router, loginLimiter)
 
 	setupProxyRoutes(router, cfg)
 

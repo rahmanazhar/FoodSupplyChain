@@ -23,12 +23,23 @@ func newFake() *fakeInventoryService {
 	return &fakeInventoryService{items: map[string]*models.Inventory{}}
 }
 
-func (f *fakeInventoryService) ListInventory(ctx context.Context) ([]models.Inventory, error) {
-	out := make([]models.Inventory, 0, len(f.items))
+func (f *fakeInventoryService) ListInventory(ctx context.Context, limit, offset int, search string) ([]models.Inventory, int, error) {
+	all := make([]models.Inventory, 0, len(f.items))
 	for _, v := range f.items {
-		out = append(out, *v)
+		if search != "" && !strings.Contains(strings.ToLower(v.Product.Name+" "+v.Product.SKU), strings.ToLower(search)) {
+			continue
+		}
+		all = append(all, *v)
 	}
-	return out, nil
+	total := len(all)
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return all[offset:end], total, nil
 }
 
 func (f *fakeInventoryService) GetInventory(ctx context.Context, id string) (*models.Inventory, error) {
@@ -88,7 +99,7 @@ func (f *fakeInventoryService) DeleteLocation(ctx context.Context, id string) er
 }
 
 func newTestServer(svc InventoryService) *Server {
-	return NewServer(&config.Config{}, svc)
+	return NewServer(&config.Config{}, svc, nil)
 }
 
 func TestListInventory(t *testing.T) {
@@ -102,12 +113,44 @@ func TestListInventory(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	var got []models.Inventory
+	var got struct {
+		Data   []models.Inventory `json:"data"`
+		Total  int                `json:"total"`
+		Limit  int                `json:"limit"`
+		Offset int                `json:"offset"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(got) != 1 || got[0].ID != "a" {
+	if got.Total != 1 || len(got.Data) != 1 || got.Data[0].ID != "a" {
 		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+	if got.Limit != 20 || got.Offset != 0 {
+		t.Fatalf("unexpected pagination: limit=%d offset=%d", got.Limit, got.Offset)
+	}
+}
+
+func TestListInventorySearch(t *testing.T) {
+	fake := newFake()
+	fake.items["a"] = &models.Inventory{ID: "a", Product: models.Product{Name: "Apple", SKU: "APL-1"}}
+	fake.items["b"] = &models.Inventory{ID: "b", Product: models.Product{Name: "Banana", SKU: "BNA-1"}}
+	srv := newTestServer(fake)
+
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/inventory?search=apple", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var got struct {
+		Data  []models.Inventory `json:"data"`
+		Total int                `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Total != 1 || len(got.Data) != 1 || got.Data[0].ID != "a" {
+		t.Fatalf("search did not filter: %s", rec.Body.String())
 	}
 }
 

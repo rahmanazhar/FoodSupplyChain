@@ -4,9 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
-	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -14,13 +13,15 @@ import (
 	"github.com/rahmanazhar/FoodSupplyChain/internal/shipment/config"
 	"github.com/rahmanazhar/FoodSupplyChain/internal/shipment/service"
 	"github.com/rahmanazhar/FoodSupplyChain/pkg/auth"
+	"github.com/rahmanazhar/FoodSupplyChain/pkg/httpx"
+	"github.com/rahmanazhar/FoodSupplyChain/pkg/metrics"
 	"github.com/rahmanazhar/FoodSupplyChain/pkg/models"
 )
 
 // ShipmentService is the behaviour the HTTP layer requires from the service.
 // Defining it here (the consumer) keeps the handlers testable with a fake.
 type ShipmentService interface {
-	ListShipments(ctx context.Context) ([]models.Shipment, error)
+	ListShipments(ctx context.Context, limit, offset int, search, status string) ([]models.Shipment, int, error)
 	GetShipment(ctx context.Context, id string) (*models.Shipment, error)
 	CreateShipment(ctx context.Context, shipment *models.Shipment) error
 	UpdateShipment(ctx context.Context, id string, update *models.Shipment) (*models.Shipment, error)
@@ -31,20 +32,27 @@ type ShipmentService interface {
 
 // Server exposes the shipment service over HTTP.
 type Server struct {
-	config       *config.Config
-	service      ShipmentService
-	auth         *auth.Manager
-	router       *mux.Router
-	requestCount int64
+	config  *config.Config
+	service ShipmentService
+	auth    *auth.Manager
+	router  *mux.Router
+	logger  *slog.Logger
+	metrics *metrics.Collector
 }
 
 // NewServer wires the routes and returns a ready-to-serve Server. When the
 // configured JWT secret is non-empty the /api/v1 routes require authentication.
-func NewServer(cfg *config.Config, svc ShipmentService) *Server {
+// A nil logger falls back to the slog default so tests need no setup.
+func NewServer(cfg *config.Config, svc ShipmentService, logger *slog.Logger) *Server {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	s := &Server{
 		config:  cfg,
 		service: svc,
 		router:  mux.NewRouter(),
+		logger:  logger,
+		metrics: metrics.NewCollector(),
 	}
 	if cfg != nil && cfg.Auth.JWTSecret != "" {
 		s.auth = auth.NewManager(cfg.Auth.JWTSecret, cfg.Auth.TokenExpiry)
@@ -59,11 +67,17 @@ func (s *Server) Router() *mux.Router {
 }
 
 func (s *Server) setupRoutes() {
-	s.router.Use(s.loggingMiddleware)
-	s.router.Use(s.metricsMiddleware)
+	// Shared, structured middleware replaces the previous ad-hoc logging and
+	// atomic request counter.
+	s.router.Use(httpx.RequestID)
+	s.router.Use(httpx.Logger(s.logger))
+	s.router.Use(httpx.Recoverer(s.logger))
+	s.router.Use(httpx.SecurityHeaders)
+	s.router.Use(s.metrics.Instrument)
 	s.router.Use(s.corsMiddleware)
 
 	s.router.HandleFunc("/health", s.healthCheckHandler).Methods(http.MethodGet, http.MethodOptions)
+	s.router.Handle("/metrics", s.metrics.Handler()).Methods(http.MethodGet, http.MethodOptions)
 
 	api := s.router.PathPrefix("/api/v1").Subrouter()
 	if s.auth != nil {
@@ -103,38 +117,27 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		next.ServeHTTP(w, r)
-		log.Printf("shipment %s %s %s", r.Method, r.URL.Path, time.Since(start))
-	})
-}
-
-func (s *Server) metricsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt64(&s.requestCount, 1)
-		next.ServeHTTP(w, r)
-	})
-}
-
 // Handlers
 
 func (s *Server) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":          "ok",
-		"timestamp":       time.Now().UTC().Format(time.RFC3339),
-		"requests_served": atomic.LoadInt64(&s.requestCount),
+		"status":    "ok",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
 func (s *Server) handleGetShipments(w http.ResponseWriter, r *http.Request) {
-	shipments, err := s.service.ListShipments(r.Context())
+	q := r.URL.Query()
+	limit, offset := httpx.ParsePagination(q)
+	search := q.Get("search")
+	status := q.Get("status")
+
+	shipments, total, err := s.service.ListShipments(r.Context(), limit, offset, search, status)
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.writeJSON(w, http.StatusOK, shipments)
+	s.writeJSON(w, http.StatusOK, httpx.Page{Data: shipments, Total: total, Limit: limit, Offset: offset})
 }
 
 func (s *Server) handleCreateShipment(w http.ResponseWriter, r *http.Request) {

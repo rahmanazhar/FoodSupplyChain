@@ -4,22 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
-	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/mux"
 
 	"github.com/rahmanazhar/FoodSupplyChain/internal/inventory/config"
 	"github.com/rahmanazhar/FoodSupplyChain/internal/inventory/service"
+	"github.com/rahmanazhar/FoodSupplyChain/pkg/httpx"
+	"github.com/rahmanazhar/FoodSupplyChain/pkg/metrics"
 	"github.com/rahmanazhar/FoodSupplyChain/pkg/models"
 )
 
 // InventoryService is the behaviour the HTTP layer requires from the service.
 // Defining it here (the consumer) keeps the handlers testable with a fake.
 type InventoryService interface {
-	ListInventory(ctx context.Context) ([]models.Inventory, error)
+	ListInventory(ctx context.Context, limit, offset int, search string) ([]models.Inventory, int, error)
 	GetInventory(ctx context.Context, id string) (*models.Inventory, error)
 	CreateInventory(ctx context.Context, inv *models.Inventory) error
 	UpdateInventory(ctx context.Context, id string, quantity int) error
@@ -36,18 +37,25 @@ type InventoryService interface {
 
 // Server exposes the inventory service over HTTP.
 type Server struct {
-	config       *config.Config
-	service      InventoryService
-	router       *mux.Router
-	requestCount int64
+	config  *config.Config
+	service InventoryService
+	router  *mux.Router
+	logger  *slog.Logger
+	metrics *metrics.Collector
 }
 
-// NewServer wires the routes and returns a ready-to-serve Server.
-func NewServer(cfg *config.Config, svc InventoryService) *Server {
+// NewServer wires the routes and returns a ready-to-serve Server. A nil logger
+// falls back to the slog default so tests can construct a server without setup.
+func NewServer(cfg *config.Config, svc InventoryService, logger *slog.Logger) *Server {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	s := &Server{
 		config:  cfg,
 		service: svc,
 		router:  mux.NewRouter(),
+		logger:  logger,
+		metrics: metrics.NewCollector(),
 	}
 	s.setupRoutes()
 	return s
@@ -59,11 +67,17 @@ func (s *Server) Router() *mux.Router {
 }
 
 func (s *Server) setupRoutes() {
-	s.router.Use(s.loggingMiddleware)
-	s.router.Use(s.metricsMiddleware)
+	// Shared, structured middleware replaces the previous ad-hoc logging and
+	// atomic request counter.
+	s.router.Use(httpx.RequestID)
+	s.router.Use(httpx.Logger(s.logger))
+	s.router.Use(httpx.Recoverer(s.logger))
+	s.router.Use(httpx.SecurityHeaders)
+	s.router.Use(s.metrics.Instrument)
 	s.router.Use(s.corsMiddleware)
 
 	s.router.HandleFunc("/health", s.healthCheckHandler).Methods(http.MethodGet, http.MethodOptions)
+	s.router.Handle("/metrics", s.metrics.Handler()).Methods(http.MethodGet, http.MethodOptions)
 
 	s.router.HandleFunc("/inventory", s.handleGetInventory).Methods(http.MethodGet, http.MethodOptions)
 	s.router.HandleFunc("/inventory", s.handleCreateInventory).Methods(http.MethodPost, http.MethodOptions)
@@ -96,38 +110,26 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		next.ServeHTTP(w, r)
-		log.Printf("inventory %s %s %s", r.Method, r.URL.Path, time.Since(start))
-	})
-}
-
-func (s *Server) metricsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt64(&s.requestCount, 1)
-		next.ServeHTTP(w, r)
-	})
-}
-
 // Handlers
 
 func (s *Server) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":          "ok",
-		"timestamp":       time.Now().UTC().Format(time.RFC3339),
-		"requests_served": atomic.LoadInt64(&s.requestCount),
+		"status":    "ok",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
 func (s *Server) handleGetInventory(w http.ResponseWriter, r *http.Request) {
-	items, err := s.service.ListInventory(r.Context())
+	q := r.URL.Query()
+	limit, offset := httpx.ParsePagination(q)
+	search := q.Get("search")
+
+	items, total, err := s.service.ListInventory(r.Context(), limit, offset, search)
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.writeJSON(w, http.StatusOK, items)
+	s.writeJSON(w, http.StatusOK, httpx.Page{Data: items, Total: total, Limit: limit, Offset: offset})
 }
 
 func (s *Server) handleCreateInventory(w http.ResponseWriter, r *http.Request) {

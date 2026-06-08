@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,13 +18,35 @@ import (
 // it to an HTTP 404 response.
 var ErrNotFound = errors.New("record not found")
 
-// ListInventory returns all inventory records with their product and location.
-func (s *InventoryService) ListInventory(ctx context.Context) ([]models.Inventory, error) {
-	var items []models.Inventory
-	if err := s.db.WithContext(ctx).Preload("Product").Preload("Location").Find(&items).Error; err != nil {
-		return nil, fmt.Errorf("failed to list inventory: %w", err)
+// ListInventory returns a page of inventory records (with their product and
+// location preloaded) and the total number of matching records. When search is
+// non-empty it filters by product name or SKU, case-insensitively.
+func (s *InventoryService) ListInventory(ctx context.Context, limit, offset int, search string) ([]models.Inventory, int, error) {
+	// Base query joins Product so the search predicate and ordering can use its
+	// columns; Product/Location are still preloaded into the returned items.
+	base := s.db.WithContext(ctx).Model(&models.Inventory{}).
+		Joins("LEFT JOIN products ON products.id = inventories.product_id")
+	if search != "" {
+		like := "%" + strings.ToLower(search) + "%"
+		base = base.Where("LOWER(products.name) LIKE ? OR LOWER(products.sku) LIKE ?", like, like)
 	}
-	return items, nil
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count inventory: %w", err)
+	}
+
+	var items []models.Inventory
+	if err := base.
+		Preload("Product").
+		Preload("Location").
+		Order("products.name asc").
+		Limit(limit).
+		Offset(offset).
+		Find(&items).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to list inventory: %w", err)
+	}
+	return items, int(total), nil
 }
 
 // GetInventory returns a single inventory record by ID, or ErrNotFound.

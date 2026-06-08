@@ -50,12 +50,30 @@ func NewAuth(dsn string, tokens *auth.Manager) (*Auth, error) {
 	return a, nil
 }
 
-// RegisterRoutes wires the authentication endpoints onto the router.
-func (a *Auth) RegisterRoutes(router *mux.Router) {
-	router.HandleFunc("/auth/register", a.handleRegister).Methods(http.MethodPost, http.MethodOptions)
-	router.HandleFunc("/auth/login", a.handleLogin).Methods(http.MethodPost, http.MethodOptions)
+// RegisterRoutes wires the authentication endpoints onto the router. The
+// loginLimit middleware (e.g. a per-IP rate limiter) is applied to the
+// credential-accepting endpoints (/auth/register and /auth/login) only; pass nil
+// to disable it.
+func (a *Auth) RegisterRoutes(router *mux.Router, loginLimit func(http.Handler) http.Handler) {
+	if loginLimit == nil {
+		loginLimit = func(h http.Handler) http.Handler { return h }
+	}
+	router.Handle("/auth/register", loginLimit(http.HandlerFunc(a.handleRegister))).
+		Methods(http.MethodPost, http.MethodOptions)
+	router.Handle("/auth/login", loginLimit(http.HandlerFunc(a.handleLogin))).
+		Methods(http.MethodPost, http.MethodOptions)
 	router.Handle("/auth/me", a.tokens.Middleware(http.HandlerFunc(a.handleMe))).
 		Methods(http.MethodGet, http.MethodOptions)
+	// Refresh requires a currently-valid token and re-issues a fresh one.
+	router.Handle("/auth/refresh", a.tokens.Middleware(http.HandlerFunc(a.handleRefresh))).
+		Methods(http.MethodPost, http.MethodOptions)
+
+	// Admin-only user management. Middleware authenticates, RequireRole gates.
+	admin := func(h http.HandlerFunc) http.Handler {
+		return a.tokens.Middleware(auth.RequireRole(auth.RoleAdmin)(http.HandlerFunc(h)))
+	}
+	router.Handle("/users", admin(a.handleListUsers)).Methods(http.MethodGet, http.MethodOptions)
+	router.Handle("/users/{id}", admin(a.handleUpdateUserRole)).Methods(http.MethodPatch, http.MethodOptions)
 }
 
 // seedDemoUsers creates one known account per role (e.g. admin/admin123) if it
@@ -171,6 +189,23 @@ func (a *Auth) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, user)
+}
+
+// handleRefresh re-issues a token for the authenticated caller. The middleware
+// has already validated the inbound token; here we look the user up afresh so
+// the new token reflects the current role.
+func (a *Auth) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	claims, ok := auth.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, errBody("unauthenticated"))
+		return
+	}
+	var user models.User
+	if err := a.db.First(&user, "username = ?", claims.Subject).Error; err != nil {
+		writeJSON(w, http.StatusUnauthorized, errBody("user no longer exists"))
+		return
+	}
+	a.issueToken(w, &user)
 }
 
 // issueToken signs a JWT for the user (subject = username) and returns it with

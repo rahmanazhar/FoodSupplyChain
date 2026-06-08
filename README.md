@@ -35,11 +35,12 @@ The system is built using a microservices architecture with the following compon
 ### Frontend
 - Vue.js 3
   - Composition API
-  - Vue Router
+  - Vue Router (with auth route guards)
   - Pinia for state management
-- Tailwind CSS for styling
+- Tailwind CSS design system with light/dark themes
+- Custom SVG charts (no chart dependency); Vitest unit tests
 - Axios for HTTP requests
-- Planned: Chart.js for analytics and Leaflet for maps (not yet integrated)
+- Planned: Leaflet for maps (not yet integrated)
 
 ### Infrastructure
 - Docker & Docker Compose for local development
@@ -145,11 +146,32 @@ npm run lint       # Run linter
 - ✅ Inventory and shipment services (HTTP handlers wired to the GORM service layer)
 - ✅ Database schema + auto-migration (GORM models)
 - ✅ Event publishing via NATS JetStream
-- ✅ Authentication & role-based access control (JWT, `pkg/auth`)
-- ✅ Kubernetes manifests (`deployments/k8s/`)
-- ✅ Unit tests for auth and HTTP handlers
-- 🔄 Frontend ↔ backend integration (inventory wired; shipment views pending)
-- 🔄 Analytics charts and map visualisations (planned)
+- ✅ Username/password auth, registration, and role-based access control (JWT)
+- ✅ Full Vue dashboard (sidebar, light/dark) wired to the API end-to-end
+- ✅ Server-side pagination + search on inventory and shipments
+- ✅ Admin user management (list users, change roles)
+- ✅ Analytics charts on the dashboard (custom SVG)
+- ✅ Observability: structured `slog` logs, request IDs, Prometheus `/metrics`
+- ✅ Hardening: rate-limited auth, security headers, panic recovery
+- ✅ Kubernetes manifests with probes, resource limits, and scrape annotations
+- ✅ Tests (Go + Vitest) and GitHub Actions CI
+- 🔄 Map visualisations (Leaflet, planned)
+
+## Production hardening
+
+- **Observability** — every service emits structured JSON logs (`log/slog`) with
+  a propagated `X-Request-ID`, and exposes Prometheus metrics at `GET /metrics`
+  (request counts, in-flight gauge, latency). Shared middleware lives in
+  [`pkg/httpx`](pkg/httpx) and [`pkg/metrics`](pkg/metrics).
+- **Security** — `/auth/login` and `/auth/register` are rate-limited per client
+  IP; responses carry hardening headers (`X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`); panics are recovered into clean 500s.
+- **API** — list endpoints are paginated and searchable
+  (`/inventory?limit=&offset=&search=`, `/shipments?...&status=`) returning
+  `{ data, total, limit, offset }`. `POST /auth/refresh` re-issues tokens.
+- **CI** — [`.github/workflows/ci.yml`](.github/workflows/ci.yml) builds, vets,
+  gofmt-checks and tests the Go services, and lints, unit-tests and builds the
+  frontend on every push and PR.
 
 ## Authentication
 

@@ -14,11 +14,23 @@ spec:
     metadata:
       labels:
         app: inventory-service
+      annotations:
+        # The service exposes Prometheus metrics on GET /metrics (port 8080).
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
         - name: inventory-service
           image: foodsupplychain-inventory:latest
           imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
           ports:
             - containerPort: 8080
           envFrom:

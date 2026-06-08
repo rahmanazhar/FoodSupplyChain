@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,6 +17,9 @@ import (
 )
 
 func main() {
+	// Structured JSON logging to stdout for the whole process.
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -30,7 +34,7 @@ func main() {
 	defer svc.Close()
 
 	// Create and configure HTTP server
-	srv := server.NewServer(cfg, svc)
+	srv := server.NewServer(cfg, svc, logger)
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
 		Handler:      srv.Router(),
