@@ -8,11 +8,14 @@
 # service (which validates them). Everything is torn down on Ctrl-C.
 #
 # Usage:
-#   ./scripts/run.sh                 start the whole stack (Ctrl-C to stop)
-#   ./scripts/run.sh --seed          also insert a demo product + location
-#   ./scripts/run.sh --no-frontend   backend only
-#   ./scripts/run.sh --no-docker     assume Postgres/NATS are already running
-#   ./scripts/run.sh --help          show this help
+#   ./scripts/run.sh                       start the whole stack (Ctrl-C to stop)
+#   ./scripts/run.sh --seed                also insert a demo product + location
+#   ./scripts/run.sh --no-frontend         backend only
+#   ./scripts/run.sh --no-docker           assume Postgres/NATS are already running
+#   ./scripts/run.sh --frontend-port=5180 --gateway-port=3001   run on custom ports
+#   ./scripts/run.sh --help                show this help
+#
+# Ports may also be set via the FRONTEND_PORT / GATEWAY_PORT environment vars.
 #
 set -euo pipefail
 
@@ -26,20 +29,22 @@ LOG_DIR="$ROOT/logs"
 BIN_DIR="$ROOT/bin"
 FRONTEND_DIR="$ROOT/frontend/foodsupplychain"
 
-INVENTORY_PORT=8080
-SHIPMENT_PORT=8081
-GATEWAY_PORT=3000
-FRONTEND_PORT=5173
+INVENTORY_PORT="${INVENTORY_PORT:-8080}"
+SHIPMENT_PORT="${SHIPMENT_PORT:-8081}"
+GATEWAY_PORT="${GATEWAY_PORT:-3000}"
+FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 
 SEED=false
 USE_DOCKER=true
 USE_FRONTEND=true
 for arg in "$@"; do
   case "$arg" in
-    --seed)        SEED=true ;;
-    --no-docker)   USE_DOCKER=false ;;
-    --no-frontend) USE_FRONTEND=false ;;
-    -h|--help)     sed -n '2,17p' "$0" | sed 's/^#\s\{0,1\}//'; exit 0 ;;
+    --seed)            SEED=true ;;
+    --no-docker)       USE_DOCKER=false ;;
+    --no-frontend)     USE_FRONTEND=false ;;
+    --gateway-port=*)  GATEWAY_PORT="${arg#*=}" ;;
+    --frontend-port=*) FRONTEND_PORT="${arg#*=}" ;;
+    -h|--help)         grep -E '^#( |$)' "$0" | sed 's/^#\s\{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg (try --help)" >&2; exit 1 ;;
   esac
 done
@@ -99,7 +104,7 @@ echo "==> Launching services..."
 PIDS+=($!)
 SERVER_PORT=$SHIPMENT_PORT "$BIN_DIR/shipment" >"$LOG_DIR/shipment.log" 2>&1 &
 PIDS+=($!)
-"$BIN_DIR/gateway" >"$LOG_DIR/gateway.log" 2>&1 &
+PORT="$GATEWAY_PORT" CORS_ALLOW_ORIGIN="http://localhost:$FRONTEND_PORT" "$BIN_DIR/gateway" >"$LOG_DIR/gateway.log" 2>&1 &
 PIDS+=($!)
 
 # 4. Launch frontend ---------------------------------------------------------
@@ -109,7 +114,7 @@ if $USE_FRONTEND; then
     (cd "$FRONTEND_DIR" && npm install)
   fi
   echo "==> Launching frontend..."
-  ( cd "$FRONTEND_DIR" && exec node_modules/.bin/vite --port "$FRONTEND_PORT" ) >"$LOG_DIR/frontend.log" 2>&1 &
+  ( cd "$FRONTEND_DIR" && VITE_API_URL="http://localhost:$GATEWAY_PORT" exec node_modules/.bin/vite --port "$FRONTEND_PORT" ) >"$LOG_DIR/frontend.log" 2>&1 &
   PIDS+=($!)
 fi
 

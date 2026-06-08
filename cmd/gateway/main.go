@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -27,34 +28,39 @@ type Config struct {
 	ShipmentService  string
 	JWTSecret        string
 	TokenTTL         time.Duration
+	CORSOrigin       string
 	ReadTimeout      time.Duration
 	WriteTimeout     time.Duration
 	IdleTimeout      time.Duration
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
+// corsMiddleware allows the configured frontend origin.
+func corsMiddleware(origin string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 
-		next.ServeHTTP(w, r)
-	})
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func main() {
 	cfg := &Config{
-		Port:             3000,
+		Port:             parsePort(getEnv("PORT", "3000")),
 		InventoryService: getEnv("INVENTORY_SERVICE_URL", "http://localhost:8080"),
 		ShipmentService:  getEnv("SHIPMENT_SERVICE_URL", "http://localhost:8081"),
 		JWTSecret:        getEnv("JWT_SECRET", "your-secret-key-here"),
 		TokenTTL:         parseDuration(getEnv("TOKEN_TTL", "1h"), time.Hour),
+		CORSOrigin:       getEnv("CORS_ALLOW_ORIGIN", "http://localhost:5173"),
 		ReadTimeout:      5 * time.Second,
 		WriteTimeout:     10 * time.Second,
 		IdleTimeout:      120 * time.Second,
@@ -82,7 +88,7 @@ func main() {
 	router.Use(httpx.Recoverer(logger))
 	router.Use(httpx.SecurityHeaders)
 	router.Use(collector.Instrument)
-	router.Use(corsMiddleware)
+	router.Use(corsMiddleware(cfg.CORSOrigin))
 
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -196,6 +202,13 @@ func parseDuration(value string, fallback time.Duration) time.Duration {
 		return d
 	}
 	return fallback
+}
+
+func parsePort(value string) int {
+	if p, err := strconv.Atoi(value); err == nil && p > 0 {
+		return p
+	}
+	return 3000
 }
 
 func getEnv(key, defaultValue string) string {
